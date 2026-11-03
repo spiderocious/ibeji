@@ -82,17 +82,29 @@ make smoke      # the Electron window, with its assertions
 
 | Your Mac | Download |
 |---|---|
-| Apple Silicon (M1–M4) | [**Ibeji-0.1.0-arm64.dmg**](https://github.com/spiderocious/ibeji/releases/latest/download/Ibeji-0.1.0-arm64.dmg) |
-| Intel | [**Ibeji-0.1.0.dmg**](https://github.com/spiderocious/ibeji/releases/latest/download/Ibeji-0.1.0.dmg) |
+| Apple Silicon (M1–M4) | [**Ibeji-0.1.1-arm64.dmg**](https://github.com/spiderocious/ibeji/releases/latest/download/Ibeji-0.1.1-arm64.dmg) |
+| Intel | [**Ibeji-0.1.1.dmg**](https://github.com/spiderocious/ibeji/releases/latest/download/Ibeji-0.1.1.dmg) |
 
 Not sure which? ` > About This Mac`. "Apple M…" means Apple Silicon.
 All releases, plus CLI-only tarballs and checksums, are on the
 [releases page](https://github.com/spiderocious/ibeji/releases/latest).
 
 1. Open the DMG and drag **Ibeji** to Applications.
-2. The app is **not signed by Apple**, so the first open is refused. Right-click
-   it in Applications and choose **Open**, then **Open** again in the dialog.
-   (Opening it normally the first time only offers "Move to Bin".)
+2. The app is **signed but not notarized** — notarizing needs a paid Apple
+   Developer account. macOS will refuse the first launch with *"Apple could
+   not verify Ibeji is free of malware"*, offering only **Move to Trash** and
+   **Done**. Clear it once, with either:
+
+   ```sh
+   xattr -dr com.apple.quarantine /Applications/Ibeji.app
+   ```
+
+   or **System Settings → Privacy & Security**, scroll to the message about
+   Ibeji, and click **Open Anyway**.
+
+   (Right-click → Open does *not* work on current macOS. If you ever see
+   "Ibeji is **damaged** and can't be opened", that is a different and genuine
+   fault — please file an issue rather than working around it.)
 3. In a terminal, install the background daemon and the `ibeji` command:
 
    ```sh
@@ -113,11 +125,16 @@ the same LAN or nothing happens — that is the whole security model.
 To remove it: `ibeji install --uninstall`, then drag the app to the Bin. Your
 identity stays in the keychain until you unpair.
 
-### Why it is not signed
+### Why macOS complains
 
-Signing needs a paid Apple Developer ID. Unsigned means the right-click dance
-above, once. If you would rather not trust a binary from the internet — a fair
-instinct for something that runs commands on your machines — build it yourself:
+The app is **ad-hoc signed**: a real signature that carries no certificate, so
+the bundle is internally consistent and macOS will run it. What it is not is
+**notarized** — that needs a paid Apple Developer account, so macOS cannot
+check it against Apple's malware service and says so once, until you clear the
+quarantine flag above.
+
+If you would rather not trust a binary from the internet — a fair instinct for
+something that runs commands on your machines — build it yourself:
 
 ```sh
 git clone https://github.com/spiderocious/ibeji && cd ibeji
@@ -131,9 +148,9 @@ inside it matches the architecture on the label before it finishes.
 
 If you only want the CLI and the MCP server — for a headless machine, or for an
 agent — the release also carries
-[`ibeji-cli-0.1.0-darwin-arm64.tar.gz`](https://github.com/spiderocious/ibeji/releases/latest/download/ibeji-cli-0.1.0-darwin-arm64.tar.gz)
+[`ibeji-cli-0.1.1-darwin-arm64.tar.gz`](https://github.com/spiderocious/ibeji/releases/latest/download/ibeji-cli-0.1.1-darwin-arm64.tar.gz)
 and
-[`ibeji-cli-0.1.0-darwin-x64.tar.gz`](https://github.com/spiderocious/ibeji/releases/latest/download/ibeji-cli-0.1.0-darwin-x64.tar.gz):
+[`ibeji-cli-0.1.1-darwin-x64.tar.gz`](https://github.com/spiderocious/ibeji/releases/latest/download/ibeji-cli-0.1.1-darwin-x64.tar.gz):
 the three binaries, nothing else. Extract them somewhere on your PATH and run
 `ibeji install` from that directory. Checksums are in `SHA256SUMS.txt`.
 

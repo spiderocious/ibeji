@@ -7,14 +7,19 @@
  * kind of failure, because nothing says what is wrong.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const want = process.argv[2] === "x64" ? "x86_64" : "arm64";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const dmg = join(root, "dist", want === "arm64" ? "Ibeji-0.1.0-arm64.dmg" : "Ibeji-0.1.0.dmg");
+// Read the version rather than hardcoding it: a stale literal here would make
+// the verifier check a file that no longer exists, or silently pass an old one.
+const { version } = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8"),
+);
+const dmg = join(root, "dist", want === "arm64" ? `Ibeji-${version}-arm64.dmg` : `Ibeji-${version}.dmg`);
 
 const mnt = mkdtempSync(join(tmpdir(), "ibeji-verify-"));
 const archOf = (p) => {
@@ -42,6 +47,41 @@ try {
     for (const b of bad) console.error(`  ${b}`);
     process.exit(1);
   }
+
+  // The signature must verify from INSIDE the DMG, which is what a user
+  // actually mounts. v0.1.0 passed every other check and still died with
+  // "Ibeji is damaged and can't be opened", because the bundle wore stock
+  // Electron's signature and nothing ever re-signed it. Running the binary
+  // directly, as the earlier test did, bypasses Gatekeeper and hides this.
+  try {
+    execFileSync("codesign", ["--verify", "--deep", "--strict", app], {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    console.log("  signature     verifies");
+  } catch (err) {
+    const detail = (err.stderr || Buffer.from("")).toString().trim();
+    console.error(`\n${dmg} has a broken signature: ${detail}`);
+    console.error("  macOS will call this app damaged and refuse to open it.");
+    process.exit(1);
+  }
+
+  // Gatekeeper will still reject an ad-hoc app as unidentified — that is
+  // expected and is what right-click → Open is for. What must NOT appear is
+  // any complaint about the code being damaged, modified or unsealed.
+  const assess = (() => {
+    try {
+      execFileSync("spctl", ["-a", "-t", "exec", "-vv", app], { stdio: ["ignore", "ignore", "pipe"] });
+      return "accepted";
+    } catch (err) {
+      return (err.stderr || Buffer.from("")).toString().trim();
+    }
+  })();
+  if (/damaged|modified|resource|invalid|unsealed/i.test(assess)) {
+    console.error(`\nGatekeeper reports a broken bundle: ${assess}`);
+    process.exit(1);
+  }
+  console.log(`  gatekeeper    ${assess.split("\n")[0] || "rejected (unsigned — expected)"}`);
+
   console.log(`  OK — every binary in ${dmg.split("/").pop()} is ${want}`);
 } finally {
   try { execFileSync("hdiutil", ["detach", mnt, "-quiet"]); } catch {}

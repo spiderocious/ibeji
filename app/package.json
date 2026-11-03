@@ -1,6 +1,6 @@
 {
   "name": "ibeji-app",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Ìbejì — the companion window. A client of the daemon's local HTTP API.",
   "main": "out/main/main.js",
@@ -52,13 +52,13 @@
           "target": "dmg"
         }
       ],
-      "identity": null,
-      "hardenedRuntime": false,
-      "gatekeeperAssess": false
+      "identity": "-",
+      "hardenedRuntime": false
     },
     "dmg": {
       "title": "Ìbejì ${version}",
       "icon": "assets/icon.icns"
-    }
+    },
+    "afterSign": "scripts/adhoc-sign.cjs"
   }
 }

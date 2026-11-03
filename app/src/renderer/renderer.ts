@@ -17,8 +17,13 @@ import type {
   Device,
   IbejiBridge,
   PairingSession,
+  PendingPrompt,
+  PortMeta,
+  PortRow,
   Result,
   SelfInfo,
+  SpaceStatus,
+  TunnelRow,
 } from "../shared/types.js";
 
 declare global {
@@ -31,8 +36,16 @@ declare global {
 
 type Tone = "live" | "attention" | "irreversible";
 
+type Tab = "devices" | "spaces" | "ports";
+
 interface State {
+  tab: Tab;
   self: SelfInfo | undefined;
+  spaces: SpaceStatus[];
+  ports: PortRow[];
+  portMeta: PortMeta | undefined;
+  tunnels: TunnelRow[];
+  prompts: PendingPrompt[];
   devices: Device[];
   candidates: Candidate[];
   hint: string | undefined;
@@ -44,6 +57,12 @@ interface State {
 }
 
 const state: State = {
+  tab: "devices",
+  spaces: [],
+  ports: [],
+  portMeta: undefined,
+  tunnels: [],
+  prompts: [],
   self: undefined,
   devices: [],
   candidates: [],
@@ -92,11 +111,12 @@ function notify(text: string, tone: Tone): void {
 // --- data -------------------------------------------------------------------
 
 async function refresh(): Promise<void> {
-  const [self, devices, candidates, pending] = await Promise.all([
+  const [self, devices, candidates, pending, prompts] = await Promise.all([
     window.ibeji.self(),
     window.ibeji.devices(),
     window.ibeji.candidates(),
     window.ibeji.pending(),
+    window.ibeji.prompts(),
   ]);
 
   state.self = unwrap(self) ?? state.self;
@@ -107,6 +127,24 @@ async function refresh(): Promise<void> {
   // Pairing state lives in the daemon, so a window opened mid-ceremony shows
   // the code rather than an empty device list.
   state.pairing = unwrap(pending)?.pairing ?? undefined;
+  // A prompt nobody can see expires in sixty seconds and makes the product
+  // look broken, so it is read on every refresh whichever tab is open.
+  state.prompts = unwrap(prompts)?.prompts ?? [];
+
+  // The other tabs only load when they are showing: a port scan and a space
+  // status on every poll would make the daemon busy for nothing.
+  if (state.tab === "spaces") {
+    state.spaces = unwrap(await window.ibeji.spaces())?.spaces ?? [];
+  } else if (state.tab === "ports") {
+    const [ports, tunnels] = await Promise.all([
+      window.ibeji.ports(),
+      window.ibeji.tunnels(),
+    ]);
+    const p = unwrap(ports);
+    state.ports = p?.ports ?? [];
+    state.portMeta = p?.meta ?? undefined;
+    state.tunnels = unwrap(tunnels)?.tunnels ?? [];
+  }
   render();
 }
 

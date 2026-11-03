@@ -116,6 +116,20 @@ function registerHandlers(): void {
   handle("devices", () => api.devices());
   handle("candidates", () => api.candidates());
   handle("pending", () => api.pending());
+
+  handle("spaces", () => api.spaces());
+  handle("spaces:promote", (name: string, path: string) => api.promote(name, path));
+  handle("spaces:discard", (name: string, path: string) => api.discard(name, path));
+
+  handle("ports", () => api.ports());
+  handle("tunnels", () => api.tunnels());
+  handle("tunnels:open", (port: number, name?: string) => api.openTunnel(port, name));
+  handle("tunnels:close", (port: number) => api.closeTunnel(port));
+
+  handle("prompts", () => api.prompts());
+  handle("prompts:answer", (id: string, accept: boolean, remember: boolean) =>
+    api.answerPrompt(id, accept, remember),
+  );
   handle("doctor", () => api.doctor());
 
   handle("pair:start", (address: string) => api.startPairing(address));

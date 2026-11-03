@@ -206,7 +206,8 @@ func (s *Server) RegisterRemoteRoutes(state RemoteState) {
 
 	s.Handle(Route{
 		Method: "POST", Path: "/exec", Mutating: true,
-		Summary: "Run a command on the paired device, streaming its output",
+		Summary: "Run a command on the paired device, streaming its output. " +
+			"afterSync waits for a space to converge first.",
 	}, func(w http.ResponseWriter, r *http.Request) {
 		s.handleExec(w, r, state)
 	})
@@ -232,6 +233,27 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request, state Remote
 	if req.Command == "" {
 		WriteError(w, Errf(CodeBadRequest, "command is required"))
 		return
+	}
+
+	// THE SYNC BARRIER.
+	//
+	// Without it there is a built-in race: save a file here, immediately run
+	// `git commit` there, and the commit captures a half-synced tree. It is
+	// intermittent, which is the worst kind of bug to find in your own
+	// commits weeks later.
+	//
+	// It runs before anything is streamed, so a space that cannot converge
+	// fails as a proper HTTP error with a reason rather than as a line in the
+	// middle of a command's output.
+	if req.AfterSync != "" {
+		if s.Barrier == nil {
+			WriteError(w, Errf(CodeInternal, "this daemon cannot wait for a space to sync"))
+			return
+		}
+		if err := s.Barrier(r, req.AfterSync, DefaultBarrierTimeout); err != nil {
+			WriteError(w, barrierError(err, req.AfterSync))
+			return
+		}
 	}
 
 	flusher, ok := w.(http.Flusher)

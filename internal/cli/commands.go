@@ -9,12 +9,16 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/feranmi/ibeji/internal/remote"
+	"github.com/feranmi/ibeji/internal/surface"
 )
 
 // Command is one `ibeji` subcommand.
@@ -22,6 +26,11 @@ type Command struct {
 	Name    string
 	Usage   string
 	Summary string
+
+	// Offline marks a command that needs no daemon. `surface` describes the
+	// API rather than calling it, and an agent reading it to learn how to
+	// start should not first have to get the daemon running.
+	Offline bool
 
 	// Run does the work. It returns an error; main maps it to an exit code.
 	Run func(ctx context.Context, env *Env, args []string) error
@@ -40,7 +49,9 @@ type Env struct {
 // Commands returns every subcommand, in the order help lists them.
 func Commands() []*Command {
 	return []*Command{
-		cmdDevices, cmdInfo, cmdLs, cmdCat, cmdGrep, cmdRun, cmdCheck, cmdDoctor, cmdTrace,
+		cmdDevices, cmdInfo, cmdLs, cmdCat, cmdGrep, cmdRun, cmdSpaces,
+		cmdPorts, cmdTunnel, cmdCp, cmdOpen, cmdPad,
+		cmdPs, cmdKill, cmdCheck, cmdDoctor, cmdTrace, cmdHelpJSON,
 	}
 }
 
@@ -521,6 +532,425 @@ var cmdTrace = &Command{
 		}
 		return nil
 	},
+}
+
+// --- spaces ---
+
+var cmdSpaces = &Command{
+	Name:    "spaces",
+	Usage:   "ibeji spaces [name]",
+	Summary: "Shared folders, their sync state and any conflicts",
+	Run: func(ctx context.Context, env *Env, args []string) error {
+		if len(args) > 0 {
+			return showSpace(ctx, env, args[0])
+		}
+		var out struct {
+			Spaces []struct {
+				Name      string `json:"name"`
+				Role      string `json:"role"`
+				State     string `json:"state"`
+				Path      string `json:"path"`
+				Files     int    `json:"files"`
+				Bytes     int64  `json:"bytes"`
+				Conflicts []struct {
+					Rel string `json:"rel"`
+				} `json:"conflicts"`
+			} `json:"spaces"`
+		}
+		if err := env.Client.GetJSON(ctx, "/v1/spaces", &out); err != nil {
+			return err
+		}
+		if len(out.Spaces) == 0 {
+			fmt.Fprintln(env.Out, "No spaces. Create one in the Ìbejì window.")
+			return nil
+		}
+		w := tabwriter.NewWriter(env.Out, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "NAME	ROLE	STATE	FILES	SIZE	PATH")
+		for _, s := range out.Spaces {
+			state := s.State
+			if len(s.Conflicts) > 0 {
+				state = fmt.Sprintf("%s (%d)", state, len(s.Conflicts))
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\n",
+				s.Name, s.Role, state, s.Files, formatBytes(s.Bytes), s.Path)
+		}
+		return w.Flush()
+	},
+}
+
+func showSpace(ctx context.Context, env *Env, name string) error {
+	var st struct {
+		Name      string `json:"name"`
+		Role      string `json:"role"`
+		State     string `json:"state"`
+		Path      string `json:"path"`
+		Conflicts []struct {
+			Rel  string `json:"rel"`
+			Copy string `json:"copy"`
+		} `json:"conflicts"`
+		Activity []struct {
+			At     time.Time `json:"at"`
+			Kind   string    `json:"kind"`
+			Paths  []string  `json:"paths"`
+			Detail string    `json:"detail"`
+		} `json:"activity"`
+	}
+	if err := env.Client.GetJSON(ctx, "/v1/spaces/status?name="+url.QueryEscape(name), &st); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(env.Out, "%s  %s  %s\n%s\n", st.Name, st.Role, st.State, st.Path)
+
+	if len(st.Conflicts) > 0 {
+		fmt.Fprintf(env.Out, "\nConflicts — your version was kept beside each file:\n")
+		for _, c := range st.Conflicts {
+			fmt.Fprintf(env.Out, "  %s\n    yours: %s\n", c.Rel, c.Copy)
+		}
+		fmt.Fprintf(env.Out, "\nResolve with the Ìbejì window: promote yours, or discard it.\n")
+	}
+
+	if len(st.Activity) > 0 {
+		fmt.Fprintln(env.Out, "\nRecent:")
+		for i, a := range st.Activity {
+			if i >= 10 {
+				break
+			}
+			line := fmt.Sprintf("  %s  %-9s", a.At.Format("15:04:05"), a.Kind)
+			if len(a.Paths) > 0 {
+				line += "  " + strings.Join(a.Paths, ", ")
+			}
+			fmt.Fprintln(env.Out, line)
+			if a.Detail != "" {
+				fmt.Fprintf(env.Out, "             %s\n", a.Detail)
+			}
+		}
+	}
+	return nil
+}
+
+// --- processes ---
+
+var cmdPs = &Command{
+	Name:    "ps",
+	Usage:   "ibeji ps <device>",
+	Summary: "Processes you started on the other machine",
+	Run: func(ctx context.Context, env *Env, args []string) error {
+		var out struct {
+			Processes []struct {
+				ID       string    `json:"id"`
+				Command  string    `json:"command"`
+				Cwd      string    `json:"cwd"`
+				Running  bool      `json:"running"`
+				ExitCode int       `json:"exitCode"`
+				Started  time.Time `json:"started"`
+			} `json:"processes"`
+		}
+		if err := env.Client.GetJSON(ctx, "/v1/processes", &out); err != nil {
+			return err
+		}
+		if len(out.Processes) == 0 {
+			fmt.Fprintln(env.Out, "Nothing running that you started.")
+			return nil
+		}
+		w := tabwriter.NewWriter(env.Out, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "ID\tSTATE\tFOR\tCOMMAND")
+		for _, p := range out.Processes {
+			state := fmt.Sprintf("exited %d", p.ExitCode)
+			if p.Running {
+				state = "running"
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s  (%s)\n",
+				p.ID, state, shortDuration(time.Since(p.Started)), p.Command, p.Cwd)
+		}
+		return w.Flush()
+	},
+}
+
+var cmdKill = &Command{
+	Name:    "kill",
+	Usage:   "ibeji kill <device> <process-id>",
+	Summary: "Stop a process on the other machine, and its children",
+	Run: func(ctx context.Context, env *Env, args []string) error {
+		if len(args) < 2 {
+			return fmt.Errorf("usage: ibeji kill <device> <process-id>")
+		}
+		if err := env.Client.PostJSON(ctx, "/v1/processes/kill",
+			map[string]string{"id": args[1]}, nil); err != nil {
+			return err
+		}
+		fmt.Fprintf(env.Out, "stopped %s\n", args[1])
+		return nil
+	},
+}
+
+// --- ports ---
+
+var cmdPorts = &Command{
+	Name:    "ports",
+	Usage:   "ibeji ports [device]",
+	Summary: "What is listening on both machines",
+	Run: func(ctx context.Context, env *Env, args []string) error {
+		var out struct {
+			Ports []struct {
+				Port         int    `json:"port"`
+				Process      string `json:"process"`
+				Service      string `json:"service"`
+				Device       string `json:"device"`
+				LoopbackOnly bool   `json:"loopbackOnly"`
+			} `json:"ports"`
+			Meta struct {
+				RemoteStale bool   `json:"remoteStale"`
+				Reason      string `json:"reason"`
+			} `json:"meta"`
+		}
+		if err := env.Client.GetJSON(ctx, "/v1/ports", &out); err != nil {
+			return err
+		}
+
+		var tunnels struct {
+			Tunnels []struct {
+				RemotePort int  `json:"remotePort"`
+				LocalPort  int  `json:"localPort"`
+				Remapped   bool `json:"remapped"`
+			} `json:"tunnels"`
+		}
+		_ = env.Client.GetJSON(ctx, "/v1/tunnels", &tunnels)
+		open := map[int]string{}
+		for _, t := range tunnels.Tunnels {
+			// The mapping is always shown: a silent remap is how an hour goes
+			// missing wondering why the wrong app is answering.
+			open[t.RemotePort] = fmt.Sprintf("→ localhost:%d", t.LocalPort)
+			if t.Remapped {
+				open[t.RemotePort] += " (remapped)"
+			}
+		}
+
+		w := tabwriter.NewWriter(env.Out, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "PORT\tSERVICE\tWHERE\tTUNNEL")
+		for _, p := range out.Ports {
+			name := p.Service
+			if name == "" {
+				name = p.Process
+			}
+			fmt.Fprintf(w, "%d\t%s\t%s\t%s\n", p.Port, name, p.Device, open[p.Port])
+		}
+		w.Flush()
+
+		// Stale renders; stale does not act — so say why rather than showing
+		// an empty list as though nothing were running over there.
+		if out.Meta.RemoteStale && out.Meta.Reason != "" {
+			fmt.Fprintf(env.Err, "\n%s\n", out.Meta.Reason)
+		}
+		return nil
+	},
+}
+
+var cmdTunnel = &Command{
+	Name:    "tunnel",
+	Usage:   "ibeji tunnel <device>:<port> [--name NAME] [--close]",
+	Summary: "Make a port on the other machine answer on localhost here",
+	Run: func(ctx context.Context, env *Env, args []string) error {
+		fs := flag.NewFlagSet("tunnel", flag.ContinueOnError)
+		fs.SetOutput(env.Err)
+		name := fs.String("name", "", "a friendly label worth keeping")
+		closing := fs.Bool("close", false, "close the tunnel instead")
+
+		positional, err := splitFlags(fs, args, 1)
+		if err != nil {
+			return err
+		}
+		if len(positional) < 1 {
+			return fmt.Errorf("usage: ibeji tunnel <device>:<port>")
+		}
+		target, err := ParseTarget(positional[0])
+		if err != nil {
+			return err
+		}
+		port, err := strconv.Atoi(target.Path)
+		if err != nil {
+			return fmt.Errorf("which port? try %s:3000", target.Device)
+		}
+
+		if *closing {
+			if err := env.Client.PostJSON(ctx, "/v1/tunnels/close",
+				map[string]int{"port": port}, nil); err != nil {
+				return err
+			}
+			fmt.Fprintf(env.Out, "closed the tunnel to %d\n", port)
+			return nil
+		}
+
+		var out struct {
+			Tunnel struct {
+				RemotePort int  `json:"remotePort"`
+				LocalPort  int  `json:"localPort"`
+				Remapped   bool `json:"remapped"`
+			} `json:"tunnel"`
+		}
+		if err := env.Client.PostJSON(ctx, "/v1/tunnels/open",
+			map[string]any{"port": port, "name": *name}, &out); err != nil {
+			return err
+		}
+		fmt.Fprintf(env.Out, "%s:%d → localhost:%d\n",
+			target.Device, out.Tunnel.RemotePort, out.Tunnel.LocalPort)
+		if out.Tunnel.Remapped {
+			fmt.Fprintf(env.Out, "  (remapped: %d was already in use here)\n", port)
+		}
+		return nil
+	},
+}
+
+// --- file drop and handoff ---
+
+var cmdCp = &Command{
+	Name:    "cp",
+	Usage:   "ibeji cp <file> <device>:",
+	Summary: "Send a file to the other machine's inbox",
+	Run: func(ctx context.Context, env *Env, args []string) error {
+		if len(args) < 2 {
+			return fmt.Errorf("usage: ibeji cp <file> <device>:")
+		}
+		if _, err := ParseTarget(args[1]); err != nil {
+			return err
+		}
+
+		f, err := os.Open(args[0])
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		info, err := f.Stat()
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return fmt.Errorf("%s is a directory; send an archive instead", args[0])
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+			env.Client.Endpoint+"/v1/drop?name="+url.QueryEscape(filepath.Base(args[0])), f)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Authorization", "Bearer "+env.Client.Token)
+		req.Header.Set("X-Ibeji-Provenance", "cli")
+		req.ContentLength = info.Size()
+
+		resp, err := env.Client.HTTP.Do(req)
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrDaemonUnreachable, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= 400 {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+			apiErr := &APIError{Status: resp.StatusCode}
+			if err := json.Unmarshal(body, apiErr); err != nil {
+				apiErr.Message = strings.TrimSpace(string(body))
+			}
+			return apiErr
+		}
+		fmt.Fprintf(env.Out, "sent %s (%s)\n", filepath.Base(args[0]), formatBytes(info.Size()))
+		return nil
+	},
+}
+
+var cmdOpen = &Command{
+	Name:    "open",
+	Usage:   "ibeji open <device> <url>",
+	Summary: "Open a URL in the other machine's browser",
+	Run: func(ctx context.Context, env *Env, args []string) error {
+		if len(args) < 2 {
+			return fmt.Errorf("usage: ibeji open <device> <url>")
+		}
+		if _, err := ParseTarget(args[0]); err != nil {
+			return err
+		}
+		if err := env.Client.PostJSON(ctx, "/v1/handoff/url",
+			map[string]string{"url": args[1]}, nil); err != nil {
+			return err
+		}
+		fmt.Fprintf(env.Out, "opened on %s\n", args[0])
+		return nil
+	},
+}
+
+var cmdPad = &Command{
+	Name:    "pad",
+	Usage:   "ibeji pad [text]",
+	Summary: "Read or replace the note shared with the other machine",
+	Run: func(ctx context.Context, env *Env, args []string) error {
+		if len(args) == 0 {
+			var out struct {
+				Text string `json:"text"`
+			}
+			if err := env.Client.GetJSON(ctx, "/v1/scratchpad", &out); err != nil {
+				return err
+			}
+			fmt.Fprint(env.Out, out.Text)
+			if out.Text != "" && !strings.HasSuffix(out.Text, "\n") {
+				fmt.Fprintln(env.Out)
+			}
+			return nil
+		}
+		return env.Client.PostJSON(ctx, "/v1/scratchpad",
+			map[string]string{"text": strings.Join(args, " ") + "\n"}, nil)
+	},
+}
+
+// --- help --json ---
+
+var cmdHelpJSON = &Command{
+	Name:    "surface",
+	Usage:   "ibeji surface [--json]",
+	Summary: "The whole API, described for an agent to read",
+	Offline: true,
+	Run: func(ctx context.Context, env *Env, args []string) error {
+		fs := flag.NewFlagSet("surface", flag.ContinueOnError)
+		fs.SetOutput(env.Err)
+		asJSON := fs.Bool("json", false, "machine-readable")
+		if err := fs.Parse(args); err != nil {
+			return err
+		}
+
+		doc := surface.Describe(Version)
+		if *asJSON {
+			body, err := doc.JSON()
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(env.Out, string(body))
+			return nil
+		}
+
+		fmt.Fprintf(env.Out, "%s\n\n", doc.About)
+		w := tabwriter.NewWriter(env.Out, 0, 0, 2, ' ', 0)
+		for _, c := range doc.Calls {
+			marker := " "
+			if c.Mutating {
+				marker = "!"
+			}
+			fmt.Fprintf(w, "%s %s\t%s\n", marker, c.Name, c.Summary)
+		}
+		w.Flush()
+		fmt.Fprintln(env.Out, "\n! marks a side effect: the other machine may ask its user first.")
+		fmt.Fprintln(env.Out, "Run `ibeji surface --json` for parameters, examples and error codes.")
+		return nil
+	},
+}
+
+// Version is stamped by main, so the surface document reports the real build.
+var Version = "dev"
+
+// shortDuration renders an age compactly.
+func shortDuration(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	default:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	}
 }
 
 // --- helpers ---

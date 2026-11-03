@@ -38,6 +38,9 @@ func run() int {
 		return 0
 	}
 
+	// The surface document reports the real build, not "dev".
+	cli.Version = version
+
 	switch args[0] {
 	case "-h", "--help", "help":
 		usage(os.Stdout)
@@ -52,6 +55,18 @@ func run() int {
 		fmt.Fprintf(os.Stderr, "ibeji: no command %q\n\n", args[0])
 		usage(os.Stderr)
 		return 2
+	}
+
+	// A command that describes the API rather than calling it runs without a
+	// daemon: an agent reading the surface to learn how to start should not
+	// first have to get the daemon running.
+	if command.Offline {
+		env := &cli.Env{Out: os.Stdout, Err: os.Stderr}
+		if err := command.Run(context.Background(), env, args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "ibeji: %v\n", err)
+			return cli.ExitCode(err)
+		}
+		return 0
 	}
 
 	client, err := cli.Connect()

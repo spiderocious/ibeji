@@ -14,6 +14,11 @@ import type {
   Candidate,
   Device,
   DiscoveryResult,
+  PendingPrompt,
+  PortMeta,
+  PortRow,
+  SpaceStatus,
+  TunnelRow,
   DoctorCheck,
   Mode,
   PairingSession,
@@ -160,6 +165,42 @@ export class ApiClient {
 
   candidates(): Promise<DiscoveryResult> {
     return this.request<DiscoveryResult>("GET", "/v1/discovery");
+  }
+
+  spaces(): Promise<{ spaces: SpaceStatus[] }> {
+    return this.request("GET", "/v1/spaces");
+  }
+
+  promote(name: string, path: string): Promise<void> {
+    return this.request("POST", "/v1/spaces/promote", { name, path });
+  }
+
+  discard(name: string, path: string): Promise<void> {
+    return this.request("POST", "/v1/spaces/discard", { name, path });
+  }
+
+  ports(): Promise<{ ports: PortRow[]; meta: PortMeta }> {
+    return this.request("GET", "/v1/ports");
+  }
+
+  tunnels(): Promise<{ tunnels: TunnelRow[] }> {
+    return this.request("GET", "/v1/tunnels");
+  }
+
+  openTunnel(port: number, name?: string): Promise<{ tunnel: TunnelRow }> {
+    return this.request("POST", "/v1/tunnels/open", { port, name: name ?? "" });
+  }
+
+  closeTunnel(port: number): Promise<void> {
+    return this.request("POST", "/v1/tunnels/close", { port });
+  }
+
+  prompts(): Promise<{ prompts: PendingPrompt[] }> {
+    return this.request("GET", "/v1/prompts");
+  }
+
+  answerPrompt(id: string, accept: boolean, remember: boolean): Promise<void> {
+    return this.request("POST", "/v1/prompts/answer", { id, accept, remember });
   }
 
   pending(): Promise<{ pairing: PairingSession | null }> {

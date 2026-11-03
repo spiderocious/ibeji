@@ -219,6 +219,46 @@ func (c *Client) Check(ctx context.Context, req CheckRequest) (*CheckResult, err
 	return resp.Check, nil
 }
 
+// Processes lists what this device started on the far machine.
+func (c *Client) Processes(ctx context.Context) ([]ProcessInfo, error) {
+	resp, stream, err := c.call(ctx, Request{Op: OpPS}, defaultCallTimeout)
+	if err != nil {
+		return nil, err
+	}
+	defer stream.Close()
+	return resp.Processes, nil
+}
+
+// Kill stops a process on the far machine, and everything it spawned.
+func (c *Client) Kill(ctx context.Context, id string) error {
+	_, stream, err := c.call(ctx, Request{Op: OpKill, ProcessID: id}, defaultCallTimeout)
+	if err != nil {
+		return err
+	}
+	stream.Close()
+	return nil
+}
+
+// Attach returns a process's remembered output.
+func (c *Client) Attach(ctx context.Context, id string) ([]OutputChunkJSON, error) {
+	resp, stream, err := c.call(ctx, Request{Op: OpAttach, ProcessID: id}, defaultCallTimeout)
+	if err != nil {
+		return nil, err
+	}
+	defer stream.Close()
+	return resp.Output, nil
+}
+
+// Ports lists what is listening on the far machine.
+func (c *Client) Ports(ctx context.Context) ([]PortInfo, error) {
+	resp, stream, err := c.call(ctx, Request{Op: OpPorts}, defaultCallTimeout)
+	if err != nil {
+		return nil, err
+	}
+	defer stream.Close()
+	return resp.Ports, nil
+}
+
 // Exec runs a command on the far machine, streaming output to the sink.
 //
 // Returns the remote exit status, which the CLI then exits with: `ibeji run …

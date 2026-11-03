@@ -76,6 +76,7 @@ check: vet
 e2e: build
 	./test/e2e-pair.sh
 	./test/e2e-exec.sh
+	./test/e2e-spaces.sh
 
 ## smoke: build the window and check it against a running daemon
 .PHONY: smoke

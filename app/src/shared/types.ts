@@ -120,5 +120,75 @@ export interface IbejiBridge {
   rename(name: string): Promise<Result<void>>;
   setMode(deviceId: string, mode: Mode): Promise<Result<void>>;
 
+  spaces(): Promise<Result<{ spaces: SpaceStatus[] }>>;
+  promote(name: string, path: string): Promise<Result<void>>;
+  discard(name: string, path: string): Promise<Result<void>>;
+
+  ports(): Promise<Result<{ ports: PortRow[]; meta: PortMeta }>>;
+  tunnels(): Promise<Result<{ tunnels: TunnelRow[] }>>;
+  openTunnel(port: number, name?: string): Promise<Result<{ tunnel: TunnelRow }>>;
+  closeTunnel(port: number): Promise<Result<void>>;
+
+  prompts(): Promise<Result<{ prompts: PendingPrompt[] }>>;
+  answerPrompt(id: string, accept: boolean, remember: boolean): Promise<Result<void>>;
+
   onEvent(fn: (e: DaemonEvent) => void): () => void;
+}
+
+/** A shared folder's state, as the spaces view renders it. */
+export interface SpaceStatus {
+  name: string;
+  path: string;
+  role: "master" | "replica";
+  mode: "two-way" | "mirror";
+  state: "in-sync" | "syncing" | "paused" | "offline" | "conflict";
+  files: number;
+  bytes: number;
+  conflicts?: { rel: string; copy: string; from: string }[];
+  activity?: { at: string; kind: string; paths?: string[]; detail?: string }[];
+}
+
+/** One listening port, on either machine. */
+export interface PortRow {
+  port: number;
+  process: string;
+  service?: string;
+  device?: string;
+  /** Bound to 127.0.0.1 there: precisely what needs a tunnel to be reachable. */
+  loopbackOnly: boolean;
+}
+
+/**
+ * How fresh a port list is.
+ *
+ * Stale renders; stale does not act — a cached list from a sleeping peer is
+ * readable with its age shown, but the tunnel button disables and says why.
+ */
+export interface PortMeta {
+  remoteAgeSeconds: number;
+  remoteStale: boolean;
+  reason?: string;
+}
+
+/** An open tunnel. */
+export interface TunnelRow {
+  remotePort: number;
+  localPort: number;
+  name?: string;
+  pinned?: boolean;
+  /** Always shown: a silent remap sends you to the wrong port. */
+  remapped: boolean;
+}
+
+/** A permission prompt waiting for an answer. */
+export interface PendingPrompt {
+  id: string;
+  /** Required slot: an unattributed prompt must not be answerable. */
+  asker: string;
+  /** Required slot: exactly what will happen, verbatim. */
+  effect: string;
+  kind: string;
+  cwd?: string;
+  provenance?: string;
+  expiresAt: string;
 }

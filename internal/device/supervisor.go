@@ -336,6 +336,20 @@ func (d *Daemon) serveStreams(ctx context.Context, conn link.Conn) {
 					d.Logger.Debug("device: control stream failed", "err", err)
 				}
 			}()
+		case link.KindSync:
+			// The peer asking about, or fetching from, a space on this
+			// machine. Reads of a space's own contents, so no prompt.
+			go d.Spaces().Serve(ctx, stream)
+
+		case link.KindTunnel:
+			// A forwarded connection: join it to this machine's own loopback,
+			// which is how a server bound to 127.0.0.1 becomes reachable from
+			// the other machine without changing how it is bound.
+			go d.ServeTunnelStream(ctx, stream)
+
+		case link.KindTransfer:
+			go d.ServeTransferStream(ctx, stream)
+
 		case link.KindRPC, link.KindExec:
 			// The peer asking this machine to do something. Every side effect
 			// among these passes through the permission engine inside the

@@ -23,8 +23,11 @@ import (
 	"github.com/feranmi/ibeji/internal/launchagent"
 	"github.com/feranmi/ibeji/internal/link"
 	"github.com/feranmi/ibeji/internal/permission"
+	"github.com/feranmi/ibeji/internal/ports"
 	"github.com/feranmi/ibeji/internal/remote"
+	"github.com/feranmi/ibeji/internal/space"
 	"github.com/feranmi/ibeji/internal/trace"
+	"github.com/feranmi/ibeji/internal/transfer"
 )
 
 // Daemon holds the device's state and its connection to the peer.
@@ -63,6 +66,27 @@ type Daemon struct {
 	// remoteServer answers the peer's requests. Built lazily and kept, so the
 	// process table survives across streams.
 	remoteServer *remote.Server
+
+	// spaces holds the shared folders; syncer runs their loops.
+	spaces *space.Manager
+	syncer *space.Syncer
+
+	// syncCtx is the daemon's lifetime, used to start a loop for a space
+	// created after boot, and to outlive the request that opened a tunnel.
+	syncCtx context.Context
+
+	// scanner surveys this machine's ports; tunnels forwards the peer's.
+	scanner *ports.Scanner
+	tunnels *ports.Manager
+
+	// inbox receives dropped files; pad is the shared note.
+	inbox   *transfer.Inbox
+	pad     *transfer.Scratchpad
+	padPath string
+
+	// clipboardOn is off by default: a shared clipboard carries whatever you
+	// last copied out of a password manager.
+	clipboardOn bool
 
 	// apiEndpoint, apiToken and doctorSecrets let doctor check the local API
 	// and the keychain the way a client would.
@@ -108,7 +132,9 @@ func New(opts Options) (*Daemon, error) {
 		registry = discovery.NewRegistry()
 	}
 
-	return &Daemon{
+	spaces := space.NewManager(name)
+
+	daemon := &Daemon{
 		Version:  opts.Version,
 		Logger:   logger,
 		store:    identity.NewStore(id, name),
@@ -118,9 +144,14 @@ func New(opts Options) (*Daemon, error) {
 		events:   opts.Events,
 		// Prompt is the default: a machine that asks before running things is
 		// the safe starting point, and Bypass is a deliberate, guarded choice.
-		mode:  api.ModePrompt,
-		perms: permission.New(nil),
-	}, nil
+		mode:   api.ModePrompt,
+		perms:  permission.New(nil),
+		spaces: spaces,
+	}
+	// Conflict copies are named after the machine whose version was moved
+	// aside, so the manager needs to know who the peer is.
+	spaces.PeerName = daemon.PeerName
+	return daemon, nil
 }
 
 // Store exposes the identity store, for the link supervisor.
@@ -314,6 +345,12 @@ func (d *Daemon) Unpair(deviceID string) error {
 	if d.perms != nil {
 		if n := d.perms.Rules().RevokeAll(); n > 0 {
 			d.Logger.Info("device: revoked remembered rules on unpair", "count", n)
+		}
+	}
+	// The PRD requires unpairing to close every tunnel at once.
+	if d.tunnels != nil {
+		if n := d.tunnels.CloseAll(); n > 0 {
+			d.Logger.Info("device: closed tunnels on unpair", "count", n)
 		}
 	}
 	d.mu.Lock()
@@ -530,6 +567,7 @@ func (d *Daemon) RemoteServer() *remote.Server {
 	if d.remoteServer == nil {
 		s := remote.NewServer(nil, d.perms, d.Logger)
 		s.PeerName = d.PeerName
+		s.Ports = d.LocalPorts
 		s.Trace = func(ev remote.TraceEvent) {
 			d.RecordTrace(trace.Event{
 				Type:       ev.Type,

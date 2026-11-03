@@ -17,6 +17,11 @@ import type {
   DoctorCheck,
   Mode,
   PairingSession,
+  PendingPrompt,
+  PortMeta,
+  PortRow,
+  SpaceStatus,
+  TunnelRow,
   Result,
   SelfInfo,
 } from "../shared/types.js";
@@ -50,6 +55,21 @@ const bridge = {
    * from that machine cannot be one click.
    */
   setMode: (deviceId: string, mode: Mode) => invoke<void>("mode:set", deviceId, mode),
+
+  // --- spaces, ports, prompts ----------------------------------------------
+  spaces: () => invoke<{ spaces: SpaceStatus[] }>("spaces"),
+  promote: (name: string, path: string) => invoke<void>("spaces:promote", name, path),
+  discard: (name: string, path: string) => invoke<void>("spaces:discard", name, path),
+
+  ports: () => invoke<{ ports: PortRow[]; meta: PortMeta }>("ports"),
+  tunnels: () => invoke<{ tunnels: TunnelRow[] }>("tunnels"),
+  openTunnel: (port: number, name?: string) =>
+    invoke<{ tunnel: TunnelRow }>("tunnels:open", port, name),
+  closeTunnel: (port: number) => invoke<void>("tunnels:close", port),
+
+  prompts: () => invoke<{ prompts: PendingPrompt[] }>("prompts"),
+  answerPrompt: (id: string, accept: boolean, remember: boolean) =>
+    invoke<void>("prompts:answer", id, accept, remember),
 
   // --- events --------------------------------------------------------------
   /** Subscribe to daemon events. Returns a disposer. */

@@ -44,12 +44,26 @@ const (
 	// OpCheck asks the far machine to probe a URL — "can *that* machine reach
 	// gitlab.com, and with what status".
 	OpCheck Op = "net.check"
+
+	// OpPS lists processes this device started on the far machine.
+	OpPS Op = "process.list"
+
+	// OpKill stops one, and everything it spawned.
+	OpKill Op = "process.kill"
+
+	// OpAttach returns a process's remembered output, so attaching shows
+	// context rather than starting mid-sentence.
+	OpAttach Op = "process.attach"
+
+	// OpPorts lists what is listening on the far machine.
+	OpPorts Op = "ports.list"
 )
 
 // Known reports whether this build understands the op.
 func (o Op) Known() bool {
 	switch o {
-	case OpList, OpStat, OpRead, OpWrite, OpSearch, OpExec, OpInfo, OpCheck:
+	case OpList, OpStat, OpRead, OpWrite, OpSearch, OpExec, OpInfo, OpCheck,
+		OpPS, OpKill, OpAttach, OpPorts:
 		return true
 	default:
 		return false
@@ -65,7 +79,9 @@ func (o Op) Known() bool {
 // marked mutating makes Prompt mode unusable.
 func (o Op) Mutating() bool {
 	switch o {
-	case OpWrite, OpExec:
+	case OpWrite, OpExec, OpKill:
+		// Killing a process the user started is a side effect on their
+		// machine, so it passes through the permission engine like any other.
 		return true
 	default:
 		return false
@@ -95,6 +111,9 @@ type Request struct {
 
 	// Check carries the probe target.
 	Check *CheckRequest `json:"check,omitempty"`
+
+	// ProcessID addresses one process, for kill and attach.
+	ProcessID string `json:"processId,omitempty"`
 }
 
 // ExecRequest asks the far machine to run a command.
@@ -186,6 +205,10 @@ type Response struct {
 	Check   *CheckResult `json:"check,omitempty"`
 	Exec    *ExecStarted `json:"exec,omitempty"`
 
+	Processes []ProcessInfo     `json:"processes,omitempty"`
+	Output    []OutputChunkJSON `json:"output,omitempty"`
+	Ports     []PortInfo        `json:"ports,omitempty"`
+
 	// Bytes is how many bytes of content follow, for a read.
 	Bytes int64 `json:"bytes,omitempty"`
 
@@ -253,6 +276,32 @@ type ExecStarted struct {
 	PID       int    `json:"pid,omitempty"`
 	Shell     string `json:"shell"`
 	Cwd       string `json:"cwd"`
+}
+
+// ProcessInfo describes a process started on this machine by the peer.
+type ProcessInfo struct {
+	ID       string    `json:"id"`
+	Command  string    `json:"command"`
+	Cwd      string    `json:"cwd"`
+	PID      int       `json:"pid"`
+	Started  time.Time `json:"started"`
+	Running  bool      `json:"running"`
+	ExitCode int       `json:"exitCode"`
+}
+
+// PortInfo is one listening port on the far machine.
+type PortInfo struct {
+	Port         int    `json:"port"`
+	Process      string `json:"process"`
+	PID          int    `json:"pid"`
+	Service      string `json:"service,omitempty"`
+	LoopbackOnly bool   `json:"loopbackOnly"`
+}
+
+// OutputChunkJSON is one remembered chunk of a process's output, on the wire.
+type OutputChunkJSON struct {
+	Stream string `json:"stream"`
+	Text   string `json:"text"`
 }
 
 // OutputKind distinguishes the streams a command writes to.

@@ -34,6 +34,9 @@ type Server struct {
 
 	// Trace records what happened, if set.
 	Trace func(ev TraceEvent)
+
+	// Ports lists this machine's listening ports, for the port view.
+	Ports func(ctx context.Context) ([]PortInfo, error)
 }
 
 // TraceEvent is what the server reports about a request.
@@ -162,6 +165,10 @@ func (s *Server) guard(ctx context.Context, req Request) (permission.Decision, e
 		a.Kind = permission.KindExec
 		a.Effect = req.Exec.Command
 		a.Cwd = req.Exec.Cwd
+	case OpKill:
+		a.Kind = permission.KindExec
+		a.Effect = "stop process " + req.ProcessID
+
 	case OpWrite:
 		a.Kind = permission.KindWrite
 		// The prompt states exactly what will happen: which file, how much.
@@ -255,6 +262,51 @@ func (s *Server) dispatch(ctx context.Context, stream link.Stream, req Request, 
 			return s.fail(stream, "bad_request", "check request has no target", "")
 		}
 		return writeResponse(stream, Response{Check: Probe(ctx, *req.Check)})
+
+	case OpPS:
+		procs := s.Runner.Processes()
+		out := make([]ProcessInfo, 0, len(procs))
+		for _, p := range procs {
+			exited, code := p.Exited()
+			out = append(out, ProcessInfo{
+				ID: p.ID, Command: p.Command, Cwd: p.Cwd, PID: p.PID,
+				Started: p.Started, Running: !exited, ExitCode: code,
+			})
+		}
+		return writeResponse(stream, Response{Processes: out})
+
+	case OpKill:
+		if err := s.Runner.Kill(req.ProcessID); err != nil {
+			return s.fail(stream, "not_found", err.Error(), "")
+		}
+		return writeResponse(stream, Response{})
+
+	case OpAttach:
+		p, ok := s.Runner.Process(req.ProcessID)
+		if !ok {
+			return s.fail(stream, "not_found",
+				fmt.Sprintf("no process %q", req.ProcessID), "")
+		}
+		chunks := p.Replay()
+		out := make([]OutputChunkJSON, 0, len(chunks))
+		for _, c := range chunks {
+			kind := "stdout"
+			if c.Kind == OutStderr {
+				kind = "stderr"
+			}
+			out = append(out, OutputChunkJSON{Stream: kind, Text: c.Text})
+		}
+		return writeResponse(stream, Response{Output: out})
+
+	case OpPorts:
+		if s.Ports == nil {
+			return writeResponse(stream, Response{Ports: []PortInfo{}})
+		}
+		found, err := s.Ports(ctx)
+		if err != nil {
+			return s.fail(stream, "internal", err.Error(), "")
+		}
+		return writeResponse(stream, Response{Ports: found})
 
 	case OpExec:
 		return s.serveExec(ctx, stream, req)

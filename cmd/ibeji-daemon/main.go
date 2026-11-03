@@ -135,6 +135,8 @@ func run(logger *slog.Logger, apiAddr string, peerPort int, noMDNS bool, instanc
 
 	// The trace goes in with the API, not after it: every call is traced from
 	// the first call, because retrofitting means missing the ones you forget.
+	d.SetPadPath(filepath.Join(stateDirOr(stateDir), "scratchpad.md"))
+
 	tracePath := filepath.Join(stateDirOr(stateDir), "trace.db")
 	tracer, err := trace.Open(tracePath)
 	if err != nil {
@@ -150,9 +152,16 @@ func run(logger *slog.Logger, apiAddr string, peerPort int, noMDNS bool, instanc
 		logger.Info("daemon: tracing", "path", tracePath)
 	}
 
+	saved := api.NewSavedCommands()
 	server.RegisterDeviceRoutes(d)
 	server.RegisterRemoteRoutes(d)
 	server.RegisterDiagnosticRoutes(d)
+	server.RegisterSpaceRoutes(d)
+	server.RegisterProcessRoutes(d, saved)
+	server.RegisterPortRoutes(d)
+	server.RegisterTransferRoutes(d)
+	// The barrier: exec with afterSync waits here before anything runs.
+	server.Barrier = d.WaitForPeerSync
 	if err := server.Start(apiAddr); err != nil {
 		return fmt.Errorf("start API: %w", err)
 	}
@@ -167,6 +176,7 @@ func run(logger *slog.Logger, apiAddr string, peerPort int, noMDNS bool, instanc
 
 	go d.ServeInbound(ctx, peerLn)
 	go d.Supervise(ctx)
+	d.StartSyncing(ctx)
 
 	if !noMDNS {
 		go advertise(ctx, logger, d, peerPort)

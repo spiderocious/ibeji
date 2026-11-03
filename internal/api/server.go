@@ -53,6 +53,10 @@ type Server struct {
 	// tests that are not about tracing.
 	Tracer Tracer
 
+	// Barrier, when set, blocks until a space has converged on both devices.
+	// Wired in by the daemon; nil where spaces do not exist.
+	Barrier func(r *http.Request, space string, timeout time.Duration) error
+
 	mu      sync.RWMutex
 	routes  []Route
 	handoff string // path actually written, for cleanup

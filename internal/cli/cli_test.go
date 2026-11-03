@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -114,18 +115,29 @@ func TestExitCodesAreDistinct(t *testing.T) {
 		"not_paired":    127,
 		"sync_conflict": 75,
 	}
-	seen := map[int]string{}
 	for code, want := range cases {
-		got := ExitCode(&APIError{Code: code})
-		if got != want {
+		if got := ExitCode(&APIError{Code: code}); got != want {
 			t.Errorf("ExitCode(%s) = %d, want %d", code, got, want)
 		}
-		// Different conditions must not collapse onto one status, except
-		// where they genuinely mean the same thing.
-		if prev, ok := seen[got]; ok && prev != "timed_out" && code != "exec_timeout" {
-			t.Errorf("%s and %s share exit code %d", prev, code, got)
+	}
+
+	// Conditions a script would act on differently must not collapse onto one
+	// status. The two timeouts share 124 on purpose — both mean "it did not
+	// finish" — so they are compared as a pair rather than individually.
+	distinct := map[int][]string{}
+	for code, status := range cases {
+		distinct[status] = append(distinct[status], code)
+	}
+	for status, codes := range distinct {
+		if len(codes) == 1 {
+			continue
 		}
-		seen[got] = code
+		sort.Strings(codes)
+		if status == 124 && len(codes) == 2 &&
+			codes[0] == "exec_timeout" && codes[1] == "timed_out" {
+			continue // both mean "it did not finish"
+		}
+		t.Errorf("%v share exit code %d but mean different things", codes, status)
 	}
 
 	if ExitCode(nil) != 0 {

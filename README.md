@@ -6,6 +6,10 @@ API / MCP surface so both you and your AI agents can work across machines.
 
 *Ìbejì* (ee-BAY-jee) is Yoruba for **twins** — two machines acting as one pair.
 
+**macOS only.** The daemon is built on launchd, the macOS keychain and a zsh
+login shell; it does not run on Windows or Linux and does not cross-compile to
+them. Both machines must be Macs.
+
 Nothing here touches the internet. No accounts, no cloud, no relay, no web app.
 If the two machines are not on the same LAN, Ìbejì does nothing. It also never
 shares, bridges or forwards a VPN — the VPN stays on one machine and what
@@ -74,15 +78,52 @@ make smoke      # the Electron window, with its assertions
 
 ## Installing
 
+Ìbejì is **macOS only**, and needs installing on **both** of your Macs.
+
+| Your Mac | Download |
+|---|---|
+| Apple Silicon (M1–M4) | [Ibeji-0.1.0-arm64.dmg](https://github.com/spiderocious/ibeji/releases/latest/download/Ibeji-0.1.0-arm64.dmg) |
+| Intel | [Ibeji-0.1.0.dmg](https://github.com/spiderocious/ibeji/releases/latest/download/Ibeji-0.1.0.dmg) |
+
+Not sure which? ` > About This Mac`. "Apple M…" means Apple Silicon.
+
+1. Open the DMG and drag **Ibeji** to Applications.
+2. The app is **not signed by Apple**, so the first open is refused. Right-click
+   it in Applications and choose **Open**, then **Open** again in the dialog.
+   (Opening it normally the first time only offers "Move to Bin".)
+3. In a terminal, install the background daemon and the `ibeji` command:
+
+   ```sh
+   /Applications/Ibeji.app/Contents/Resources/bin/ibeji install
+   ```
+
+   This sets up a LaunchAgent so the daemon starts when you log in, and links
+   `ibeji` into `/usr/local/bin`. It never needs `sudo` — and refuses to run
+   under it, because a root daemon cannot reach your keychain or your GUI
+   session.
+
+4. Run `ibeji doctor`. Every failure it reports names its own fix.
+
+Then do the same on the second Mac, and pair them from the window: one machine
+shows a six-digit code, the other must show the same six digits. Both are on
+the same LAN or nothing happens — that is the whole security model.
+
+To remove it: `ibeji install --uninstall`, then drag the app to the Bin. Your
+identity stays in the keychain until you unpair.
+
+### Why it is not signed
+
+Signing needs a paid Apple Developer ID. Unsigned means the right-click dance
+above, once. If you would rather not trust a binary from the internet — a fair
+instinct for something that runs commands on your machines — build it yourself:
+
 ```sh
-make build
-./bin/ibeji doctor     # tells you what is missing and how to fix it
+git clone https://github.com/spiderocious/ibeji && cd ibeji
+make build && cd app && npm install && npm run dist:arm64   # or dist:x64
 ```
 
-The daemon must run as a **LaunchAgent in your login session**, never a root
-LaunchDaemon: remote commands need your keychain, your GUI session and your
-PATH. `ibeji doctor` checks this, among five other things, and every failure it
-reports names the fix rather than the symptom.
+The DMG lands in `dist/`, and `npm run dist:*` verifies that every binary
+inside it matches the architecture on the label before it finishes.
 
 ## The commands
 
@@ -100,6 +141,7 @@ ibeji open desktop https://gitlab.com    open a URL in its browser
 ibeji pad                                the shared note
 ibeji ps desktop / kill desktop <id>     processes you started over there
 ibeji check desktop https://gitlab.com   whose network is the problem
+ibeji install                            set up the daemon and the CLI
 ibeji doctor                             diagnose a broken install
 ibeji trace --errors                     what happened, and why it failed
 ibeji surface --json                     the whole API, for an agent to read
@@ -136,3 +178,7 @@ not by a unit test — two daemons displacing each other 46,251 times in fifteen
 seconds, a sync that silently dropped same-second edits, a plist launchd
 rejected without naming the key. Each one is now a test with a comment saying
 what would be lost if it failed.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

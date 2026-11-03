@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Ìbejì — twins. Two marks of equal weight, joined by one link.
+       Paper-200 ground, sea-600 ink: the product's own tokens. -->
+  <rect width="1024" height="1024" rx="228" fill="#F4F1E9"/>
+  <!-- the link, drawn first so the twins sit on top of it -->
+  <path d="M300 512 H724" stroke="#1B6B72" stroke-width="48" stroke-linecap="round"/>
+  <!-- the twins: identical, neither larger -->
+  <circle cx="300" cy="512" r="138" fill="#F4F1E9" stroke="#1B6B72" stroke-width="56"/>
+  <circle cx="724" cy="512" r="138" fill="#F4F1E9" stroke="#1B6B72" stroke-width="56"/>
+  <!-- each one's pinned key: the dot that makes it this device and no other -->
+  <circle cx="300" cy="512" r="50" fill="#1B6B72"/>
+  <circle cx="724" cy="512" r="50" fill="#1B6B72"/>
+</svg>

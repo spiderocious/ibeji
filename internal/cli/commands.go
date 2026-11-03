@@ -52,6 +52,7 @@ func Commands() []*Command {
 		cmdDevices, cmdInfo, cmdLs, cmdCat, cmdGrep, cmdRun, cmdSpaces,
 		cmdPorts, cmdTunnel, cmdCp, cmdOpen, cmdPad,
 		cmdPs, cmdKill, cmdCheck, cmdDoctor, cmdTrace, cmdHelpJSON,
+		cmdInstall,
 	}
 }
 

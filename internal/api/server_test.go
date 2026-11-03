@@ -738,6 +738,8 @@ func (f *fakeState) Unpair(deviceID string) error {
 	return nil
 }
 
+func (f *fakeState) PendingPairing() *PairingView { return f.pairing }
+
 func (f *fakeState) BeginPairing(address string) (*PairingView, error) {
 	if f.pairing == nil {
 		return nil, link.ErrNotLinked

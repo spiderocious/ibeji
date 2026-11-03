@@ -192,6 +192,20 @@ else
   fail "the API answered without a token"
 fi
 
+# The link must be stable, not merely established. Both sides dialling at once
+# made each connection displace the previous one — 46,000 drops in fifteen
+# seconds, and a pegged core on both machines.
+drops() { grep -c "link dropped" "$SCRATCH/alpha.log" 2>/dev/null | head -1; }
+DROPS_BEFORE=$(drops); DROPS_BEFORE=${DROPS_BEFORE:-0}
+sleep 8
+DROPS_AFTER=$(drops); DROPS_AFTER=${DROPS_AFTER:-0}
+CHURN=$(( DROPS_AFTER - DROPS_BEFORE ))
+if (( CHURN <= 1 )); then
+  pass "the link is stable ($CHURN drops in 8s)"
+else
+  fail "the link churned $CHURN times in 8s; both sides are probably dialling"
+fi
+
 # --- unpair ---
 
 step "Unpairing"

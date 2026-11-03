@@ -361,6 +361,20 @@ func (d *Daemon) BeginPairing(address string) (*api.PairingView, error) {
 	return api.PairingViewFrom(session), nil
 }
 
+// PendingPairing implements api.DeviceState.
+//
+// Pairing state belongs to the daemon, not the window: the ceremony can be
+// started from the CLI, and a window opened or reopened while it is in flight
+// must show the code rather than an empty device list.
+func (d *Daemon) PendingPairing() *api.PairingView {
+	d.pairer.Sweep()
+	s := d.pairer.Latest()
+	if s == nil {
+		return nil
+	}
+	return api.PairingViewFrom(s)
+}
+
 // ConfirmPairing implements api.DeviceState.
 func (d *Daemon) ConfirmPairing(sessionID string) (*api.Device, error) {
 	// v1 is exactly two devices. Confirming a stale session after a pair has

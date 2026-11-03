@@ -10,8 +10,9 @@
 
 import { contextBridge, ipcRenderer } from "electron";
 import type {
-  Candidate,
   DaemonEvent,
+  DiscoveryResult,
+  IbejiBridge,
   Device,
   DoctorCheck,
   Mode,
@@ -27,7 +28,8 @@ const bridge = {
   // --- reads ---------------------------------------------------------------
   self: () => invoke<SelfInfo>("self"),
   devices: () => invoke<{ devices: Device[] }>("devices"),
-  candidates: () => invoke<{ candidates: Candidate[] }>("candidates"),
+  candidates: () => invoke<DiscoveryResult>("candidates"),
+  pending: () => invoke<{ pairing: PairingSession | null }>("pending"),
   doctor: () => invoke<{ checks: DoctorCheck[] }>("doctor"),
 
   // --- pairing -------------------------------------------------------------
@@ -58,6 +60,9 @@ const bridge = {
   },
 } as const;
 
-export type IbejiBridge = typeof bridge;
+// The shared declaration is the contract the renderer types against; this
+// assertion is what stops the two drifting apart.
+const _contract: IbejiBridge = bridge;
+void _contract;
 
 contextBridge.exposeInMainWorld("ibeji", bridge);

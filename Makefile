@@ -76,6 +76,11 @@ check: vet
 e2e: build
 	./test/e2e-pair.sh
 
+## smoke: build the window and check it against a running daemon
+.PHONY: smoke
+smoke:
+	cd app && npm run smoke
+
 ## app: install the Electron app's dependencies
 .PHONY: app
 app:

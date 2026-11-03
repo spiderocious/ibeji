@@ -21,3 +21,43 @@
 
 /* The title bar is hiddenInset, so content clears the traffic lights. */
 .app-titlebar-pad { height: 28px; flex: none; -webkit-app-region: drag; }
+
+/* The window's own layout. Components come from _components.css; nothing that
+ * belongs in a component belongs here. */
+
+.app-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-6) var(--s-3);
+  border-bottom: 1px solid var(--paper-400);
+  flex: none;
+}
+.app-header .legend { margin-left: auto; }
+
+.app-main {
+  flex: 1;
+  padding: var(--s-5) var(--s-6) var(--s-7);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.app-main > .es { margin: auto; }
+
+.banner { margin: 0 var(--s-6); }
+
+/* The pairing code: the one deliberate exception to the type law.
+ *
+ * `.figure` is a record component and is right for byte counts, port numbers
+ * and transfer sizes — all things scanned in a list. The pairing code is a
+ * record value too, but it is read aloud across a room rather than scanned,
+ * and the design system documents it as the single place a record is set in
+ * territory type. There is no class for it upstream and the system is frozen,
+ * so the override lives here in the app's own chrome, stated rather than
+ * silently applied. */
+.app-pairing-code {
+  font-family: var(--font-territory);
+  font-weight: 300;
+  letter-spacing: .14em;
+}

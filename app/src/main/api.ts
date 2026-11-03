@@ -13,6 +13,7 @@ import { join } from "node:path";
 import type {
   Candidate,
   Device,
+  DiscoveryResult,
   DoctorCheck,
   Mode,
   PairingSession,
@@ -22,6 +23,7 @@ import type {
 export type {
   Candidate,
   Device,
+  DiscoveryResult,
   DoctorCheck,
   Mode,
   PairingSession,
@@ -156,8 +158,12 @@ export class ApiClient {
     return this.request<{ devices: Device[] }>("GET", "/v1/devices");
   }
 
-  candidates(): Promise<{ candidates: Candidate[] }> {
-    return this.request<{ candidates: Candidate[] }>("GET", "/v1/discovery");
+  candidates(): Promise<DiscoveryResult> {
+    return this.request<DiscoveryResult>("GET", "/v1/discovery");
+  }
+
+  pending(): Promise<{ pairing: PairingSession | null }> {
+    return this.request<{ pairing: PairingSession | null }>("GET", "/v1/pair");
   }
 
   doctor(): Promise<{ checks: DoctorCheck[] }> {

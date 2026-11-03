@@ -1,6 +1,7 @@
 package device
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -506,5 +507,39 @@ func TestPairingExchangeToleratesUnpairedPeer(t *testing.T) {
 	}
 	if name != "Desktop" {
 		t.Fatalf("name = %q, want Desktop", name)
+	}
+}
+
+// Regression: both devices dialled and both accepted, so each new connection
+// displaced the previous one — a hot loop that logged 46,000 link drops in
+// fifteen seconds and pegged a core on both machines. Exactly one side must
+// dial, decided without negotiation.
+func TestExactlyOneSideDials(t *testing.T) {
+	laptop, desktop := newDaemon(t, "Laptop"), newDaemon(t, "Desktop")
+	pairDaemons(t, laptop, desktop)
+
+	a, b := laptop.shouldDial(), desktop.shouldDial()
+	if a == b {
+		t.Fatalf("both sides agree on dialling (%v); one dials, the other listens", a)
+	}
+
+	// The rule is deterministic: both arrive at the same answer from the same
+	// two keys, with no negotiation and no coin flip.
+	for i := 0; i < 20; i++ {
+		if laptop.shouldDial() != a || desktop.shouldDial() != b {
+			t.Fatal("shouldDial is not deterministic")
+		}
+	}
+	// And it is the lower key that dials, on both sides' reckoning.
+	lower := bytes.Compare(laptop.Store().Self().Public(), desktop.Store().Self().Public()) < 0
+	if a != lower {
+		t.Fatal("the dialer is not the device with the lower key")
+	}
+}
+
+func TestUnpairedDeviceDoesNotDial(t *testing.T) {
+	d := newDaemon(t, "Laptop")
+	if d.shouldDial() {
+		t.Fatal("an unpaired daemon wants to dial; there is nobody to dial")
 	}
 }

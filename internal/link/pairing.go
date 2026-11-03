@@ -236,6 +236,20 @@ func (p *Pairer) Sweep() int {
 // Active reports how many sessions are in flight, for tests and the API.
 func (p *Pairer) Active() int { return len(p.sessions) }
 
+// Latest returns the most recently started session, or nil.
+//
+// v1 pairs one device at a time, so "the ceremony in flight" is unambiguous;
+// if several were somehow started, the newest is the one on screen.
+func (p *Pairer) Latest() *PairingSession {
+	var newest *PairingSession
+	for _, s := range p.sessions {
+		if newest == nil || s.StartedAt.After(newest.StartedAt) {
+			newest = s
+		}
+	}
+	return newest
+}
+
 // Clear abandons every in-flight session.
 //
 // Called on unpair. Without it, a half-finished ceremony left the listener

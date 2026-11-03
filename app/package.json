@@ -7,7 +7,7 @@
   "scripts": {
     "sync-ds": "./scripts/sync-design-system.sh",
     "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.renderer.json && node scripts/copy-assets.mjs",
     "dev": "npm run build && electron .",
     "start": "electron .",
     "smoke": "npm run build && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron test/smoke.js"

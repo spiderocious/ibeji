@@ -35,8 +35,24 @@ export interface Device {
 export interface Candidate {
   name: string;
   address: string;
+  port: number;
   fingerprint: string;
   apiVersion: string;
+  /** False when the peer speaks a protocol version this build does not. */
+  compatible: boolean;
+  /** "mdns" or "manual" — both are first-class ways to find a device. */
+  source: string;
+}
+
+/** What GET /v1/discovery returns: what was found, and why it may be empty. */
+export interface DiscoveryResult {
+  candidates: Candidate[];
+  /**
+   * Why the list looks the way it does. The daemon supplies it because only
+   * the daemon knows whether multicast is silent or the other machine is off,
+   * and the two need different advice.
+   */
+  hint: string;
 }
 
 /** The daemon's own view of itself. */
@@ -79,3 +95,30 @@ export interface DaemonEvent {
 export type Result<T> =
   | { ok: true; value: T }
   | { ok: false; error: { code: string; message: string } };
+
+/**
+ * What the preload bridge exposes on `window.ibeji`.
+ *
+ * Declared here rather than inferred from the preload module so the renderer
+ * can type it without importing that module: the renderer compiles as a plain
+ * ES module for a sandboxed page, and pulling the preload in made TypeScript
+ * re-emit it as ESM, which Electron cannot load as a preload script.
+ */
+export interface IbejiBridge {
+  self(): Promise<Result<SelfInfo>>;
+  devices(): Promise<Result<{ devices: Device[] }>>;
+  candidates(): Promise<Result<DiscoveryResult>>;
+  /** The ceremony in flight, if any — so a reopened window shows the code. */
+  pending(): Promise<Result<{ pairing: PairingSession | null }>>;
+  doctor(): Promise<Result<{ checks: DoctorCheck[] }>>;
+
+  startPairing(address: string): Promise<Result<PairingSession>>;
+  confirmPairing(sessionId: string): Promise<Result<{ device: Device }>>;
+  cancelPairing(sessionId: string): Promise<Result<void>>;
+
+  unpair(deviceId: string): Promise<Result<void>>;
+  rename(name: string): Promise<Result<void>>;
+  setMode(deviceId: string, mode: Mode): Promise<Result<void>>;
+
+  onEvent(fn: (e: DaemonEvent) => void): () => void;
+}

@@ -1,0 +1,18 @@
+{
+  "comment": [
+    "The renderer is a sandboxed page with no module loader: it gets its API",
+    "through the preload bridge on window.ibeji, not through imports. So it",
+    "compiles to a plain script rather than CommonJS, whose `exports` would be",
+    "undefined at runtime. Types are shared by reference, not by import."
+  ],
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "outDir": "out",
+    "rootDir": "src",
+    "lib": ["ES2023", "DOM"],
+    "types": []
+  },
+  "include": ["src/renderer/**/*.ts"]
+}

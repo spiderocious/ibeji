@@ -1,6 +1,7 @@
 package device
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"math/rand"
@@ -60,6 +61,15 @@ func (d *Daemon) Supervise(ctx context.Context) {
 
 		if d.Conn() != nil {
 			if !sleep(ctx, time.Second) {
+				return
+			}
+			continue
+		}
+
+		// Only one side dials, or the two displace each other's connections
+		// forever. The other side waits for the inbound link.
+		if !d.shouldDial() {
+			if !sleep(ctx, 2*time.Second) {
 				return
 			}
 			continue
@@ -188,12 +198,28 @@ func (d *Daemon) dialPeer(ctx context.Context) (link.Conn, error) {
 	return nil, lastErr
 }
 
+// shouldDial reports whether this device is the one that opens the connection.
+//
+// Both devices listen, but only one dials: the device whose public key sorts
+// lower. Without a rule, both dial at once, each accepts the other, and each
+// new connection displaces the previous one — a hot loop that logged 46,000
+// link drops in fifteen seconds and would have pegged a core on both machines,
+// wrecking the "idle CPU near zero" requirement.
+//
+// Comparing keys is deterministic and needs no negotiation: both sides already
+// know both keys, and they always reach the same answer.
+func (d *Daemon) shouldDial() bool {
+	peer := d.store.Peer()
+	if peer == nil {
+		return false
+	}
+	return bytes.Compare(d.store.Self().Public(), peer.PublicKey) < 0
+}
+
 // ServeInbound accepts connections from the peer until ctx is cancelled.
 //
-// Both devices dial and both listen. Whichever gets there first wins; the
-// other's attempt fails or is dropped. That is simpler than electing a dialer,
-// and it means a machine waking up reconnects without waiting for the other
-// side to notice.
+// Both devices listen; only the lower-keyed one dials. The listener stays open
+// on both so either can be the one that was asleep.
 func (d *Daemon) ServeInbound(ctx context.Context, ln link.Listener) {
 	for {
 		conn, err := ln.Accept(ctx)

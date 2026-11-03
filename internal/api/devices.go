@@ -91,6 +91,9 @@ type DeviceState interface {
 	SetMode(deviceID string, mode Mode) error
 	Unpair(deviceID string) error
 
+	// PendingPairing reports a ceremony in flight, so a window opened or
+	// reopened mid-pairing shows the code rather than nothing.
+	PendingPairing() *PairingView
 	BeginPairing(address string) (*PairingView, error)
 	ConfirmPairing(sessionID string) (*Device, error)
 	CancelPairing(sessionID string) error
@@ -202,6 +205,13 @@ func (s *Server) RegisterDeviceRoutes(state DeviceState) {
 	})
 
 	// --- pairing ---
+
+	s.Handle(Route{
+		Method: "GET", Path: "/pair",
+		Summary: "The pairing ceremony in flight, if any",
+	}, func(w http.ResponseWriter, r *http.Request) {
+		WriteJSON(w, map[string]any{"pairing": state.PendingPairing()})
+	})
 
 	s.Handle(Route{
 		Method: "POST", Path: "/pair/start", Mutating: true,

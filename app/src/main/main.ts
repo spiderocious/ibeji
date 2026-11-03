@@ -115,6 +115,7 @@ function registerHandlers(): void {
   handle("self", () => api.self());
   handle("devices", () => api.devices());
   handle("candidates", () => api.candidates());
+  handle("pending", () => api.pending());
   handle("doctor", () => api.doctor());
 
   handle("pair:start", (address: string) => api.startPairing(address));

@@ -82,10 +82,12 @@ make smoke      # the Electron window, with its assertions
 
 | Your Mac | Download |
 |---|---|
-| Apple Silicon (M1–M4) | [Ibeji-0.1.0-arm64.dmg](https://github.com/spiderocious/ibeji/releases/latest/download/Ibeji-0.1.0-arm64.dmg) |
-| Intel | [Ibeji-0.1.0.dmg](https://github.com/spiderocious/ibeji/releases/latest/download/Ibeji-0.1.0.dmg) |
+| Apple Silicon (M1–M4) | [**Ibeji-0.1.0-arm64.dmg**](https://github.com/spiderocious/ibeji/releases/latest/download/Ibeji-0.1.0-arm64.dmg) |
+| Intel | [**Ibeji-0.1.0.dmg**](https://github.com/spiderocious/ibeji/releases/latest/download/Ibeji-0.1.0.dmg) |
 
 Not sure which? ` > About This Mac`. "Apple M…" means Apple Silicon.
+All releases, plus CLI-only tarballs and checksums, are on the
+[releases page](https://github.com/spiderocious/ibeji/releases/latest).
 
 1. Open the DMG and drag **Ibeji** to Applications.
 2. The app is **not signed by Apple**, so the first open is refused. Right-click
@@ -124,6 +126,16 @@ make build && cd app && npm install && npm run dist:arm64   # or dist:x64
 
 The DMG lands in `dist/`, and `npm run dist:*` verifies that every binary
 inside it matches the architecture on the label before it finishes.
+
+### Just the command line
+
+If you only want the CLI and the MCP server — for a headless machine, or for an
+agent — the release also carries
+[`ibeji-cli-0.1.0-darwin-arm64.tar.gz`](https://github.com/spiderocious/ibeji/releases/latest/download/ibeji-cli-0.1.0-darwin-arm64.tar.gz)
+and
+[`ibeji-cli-0.1.0-darwin-x64.tar.gz`](https://github.com/spiderocious/ibeji/releases/latest/download/ibeji-cli-0.1.0-darwin-x64.tar.gz):
+the three binaries, nothing else. Extract them somewhere on your PATH and run
+`ibeji install` from that directory. Checksums are in `SHA256SUMS.txt`.
 
 ## The commands
 

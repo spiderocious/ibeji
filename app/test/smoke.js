@@ -147,6 +147,13 @@ app.whenReady().then(async () => {
       `the pairing code is set in ${probe.pairingCodeFont}; the design system makes it the one ` +
       `record value in territory type, because it is read aloud rather than scanned`],
     [!consoleMessages.some((m) => m.startsWith("[3]")), `renderer console errors: ${consoleMessages.join(" | ")}`],
+    // Without a daemon the window renders the empty state and every populated
+    // view goes unchecked — the failure this file's own comment warns about.
+    // test/e2e-app.sh sets this, having started one, so the degraded run
+    // cannot pass quietly in its place.
+    [!process.env.IBEJI_SMOKE_REQUIRE_DAEMON || !probe.daemonDown,
+      "IBEJI_SMOKE_REQUIRE_DAEMON is set but the window says the daemon is down: " +
+      `it read ${process.env.IBEJI_HANDOFF || "~/.ibeji/api.json"}`],
   ];
   for (const [ok, msg] of checks) if (!ok) fail(msg);
 

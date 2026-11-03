@@ -71,12 +71,13 @@ check: vet
 	@test -z "$$(gofmt -s -l . | tee /dev/stderr)" || { echo 'gofmt -s -w . needed'; exit 1; }
 	go test -race -count=1 ./...
 
-## e2e: the end-to-end runs — pairing, then remote exec
+## e2e: the end-to-end runs — pairing, exec, spaces, then the window
 .PHONY: e2e
 e2e: build
 	./test/e2e-pair.sh
 	./test/e2e-exec.sh
 	./test/e2e-spaces.sh
+	./test/e2e-app.sh
 
 ## smoke: build the window and check it against a running daemon
 .PHONY: smoke

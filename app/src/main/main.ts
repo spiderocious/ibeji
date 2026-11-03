@@ -15,7 +15,15 @@ import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage } from "ele
 import { join } from "node:path";
 import { ApiClient, ApiError, DaemonUnreachableError } from "./api.js";
 
-const api = new ApiClient();
+/**
+ * IBEJI_HANDOFF overrides where the window looks for the daemon's endpoint and
+ * token. The window does not normally read its environment — it is launched
+ * from the Dock and inherits nothing — but the smoke test launches it directly
+ * and must be able to point it at a throwaway daemon. Without this, the test
+ * silently falls back to the real ~/.ibeji: on a clean machine that means the
+ * daemon-down empty state, and every populated view goes unchecked.
+ */
+const api = new ApiClient(process.env.IBEJI_HANDOFF || undefined);
 
 let win: BrowserWindow | undefined;
 let tray: Tray | undefined;

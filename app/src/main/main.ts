@@ -127,6 +127,8 @@ function registerHandlers(): void {
   handle("tunnels:close", (port: number) => api.closeTunnel(port));
 
   handle("prompts", () => api.prompts());
+  handle("trace", (opts?: { errors?: boolean; provenance?: string }) => api.trace(opts));
+  handle("trace:stats", () => api.traceStats());
   handle("prompts:answer", (id: string, accept: boolean, remember: boolean) =>
     api.answerPrompt(id, accept, remember),
   );

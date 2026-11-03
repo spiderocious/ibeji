@@ -130,6 +130,8 @@ export interface IbejiBridge {
   closeTunnel(port: number): Promise<Result<void>>;
 
   prompts(): Promise<Result<{ prompts: PendingPrompt[] }>>;
+  trace(opts?: { errors?: boolean; provenance?: string }): Promise<Result<{ events: TraceEvent[] }>>;
+  traceStats(): Promise<Result<TraceStats>>;
   answerPrompt(id: string, accept: boolean, remember: boolean): Promise<Result<void>>;
 
   onEvent(fn: (e: DaemonEvent) => void): () => void;
@@ -191,4 +193,25 @@ export interface PendingPrompt {
   cwd?: string;
   provenance?: string;
   expiresAt: string;
+}
+
+/** One recorded thing the daemon did. */
+export interface TraceEvent {
+  at: string;
+  type: string;
+  device?: string;
+  provenance?: string;
+  code?: string;
+  error?: string;
+  /** Names the likely cause; the field that saves a round of guessing. */
+  hint?: string;
+  durationMs?: number;
+}
+
+/** How much the trace is holding, and its limits. */
+export interface TraceStats {
+  events: number;
+  bytes: number;
+  maxBytes: number;
+  maxAge: number;
 }

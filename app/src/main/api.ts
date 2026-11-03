@@ -18,6 +18,8 @@ import type {
   PortMeta,
   PortRow,
   SpaceStatus,
+  TraceEvent,
+  TraceStats,
   TunnelRow,
   DoctorCheck,
   Mode,
@@ -193,6 +195,17 @@ export class ApiClient {
 
   closeTunnel(port: number): Promise<void> {
     return this.request("POST", "/v1/tunnels/close", { port });
+  }
+
+  trace(opts?: { errors?: boolean; provenance?: string }): Promise<{ events: TraceEvent[] }> {
+    const q = new URLSearchParams({ since: "1h", limit: "60" });
+    if (opts?.errors) q.set("errors", "true");
+    if (opts?.provenance) q.set("provenance", opts.provenance);
+    return this.request("GET", `/v1/trace?${q.toString()}`);
+  }
+
+  traceStats(): Promise<TraceStats> {
+    return this.request("GET", "/v1/trace/stats");
   }
 
   prompts(): Promise<{ prompts: PendingPrompt[] }> {

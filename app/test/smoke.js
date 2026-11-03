@@ -104,7 +104,7 @@ app.whenReady().then(async () => {
 
   // Exercise the other tabs too: a view that only renders when clicked is a
   // view that breaks without anyone noticing.
-  for (const tab of ["spaces", "ports"]) {
+  for (const tab of ["spaces", "ports", "trace"]) {
     const clicked = await win.webContents.executeJavaScript(
       `(() => { const el = document.querySelector('[data-tab="${tab}"]');
                 if (!el) return false; el.click(); return true; })()`,

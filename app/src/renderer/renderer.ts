@@ -23,6 +23,7 @@ import type {
   Result,
   SelfInfo,
   SpaceStatus,
+  TraceEvent,
   TunnelRow,
 } from "../shared/types.js";
 
@@ -36,7 +37,7 @@ declare global {
 
 type Tone = "live" | "attention" | "irreversible";
 
-type Tab = "devices" | "spaces" | "ports";
+type Tab = "devices" | "spaces" | "ports" | "trace";
 
 interface State {
   tab: Tab;
@@ -46,6 +47,8 @@ interface State {
   portMeta: PortMeta | undefined;
   tunnels: TunnelRow[];
   prompts: PendingPrompt[];
+  trace: TraceEvent[];
+  traceErrorsOnly: boolean;
   devices: Device[];
   candidates: Candidate[];
   hint: string | undefined;
@@ -63,6 +66,8 @@ const state: State = {
   portMeta: undefined,
   tunnels: [],
   prompts: [],
+  trace: [],
+  traceErrorsOnly: false,
   self: undefined,
   devices: [],
   candidates: [],
@@ -144,6 +149,9 @@ async function refresh(): Promise<void> {
     state.ports = p?.ports ?? [];
     state.portMeta = p?.meta ?? undefined;
     state.tunnels = unwrap(tunnels)?.tunnels ?? [];
+  } else if (state.tab === "trace") {
+    const opts = state.traceErrorsOnly ? { errors: true } : undefined;
+    state.trace = unwrap(await window.ibeji.trace(opts))?.events ?? [];
   }
   render();
 }
@@ -371,11 +379,59 @@ function formatBytes(n: number): string {
   return `${value.toFixed(1)} ${units[i]}`;
 }
 
+/**
+ * The trace: what the daemon did, so a failure can be explained.
+ *
+ * Oldest first, because a trace reads like a story. The hint is the part that
+ * saves a round of guessing, so it is never collapsed away.
+ */
+function traceView(): string {
+  const rows = [...state.trace].reverse();
+  const filter = `
+    <div style="display:flex;gap:var(--s-2);margin-bottom:var(--s-4)">
+      <button class="btn btn-${state.traceErrorsOnly ? "secondary" : "primary"} btn-sm"
+        data-trace-filter="all">Everything</button>
+      <button class="btn btn-${state.traceErrorsOnly ? "primary" : "secondary"} btn-sm"
+        data-trace-filter="errors">Failures only</button>
+    </div>`;
+
+  if (rows.length === 0) {
+    return (
+      filter +
+      `<div class="es"><div class="es-title">Nothing recorded</div>
+         <div class="es-msg">${
+           state.traceErrorsOnly ? "Nothing has failed in the last hour." : "No activity in the last hour."
+         }</div></div>`
+    );
+  }
+
+  return (
+    filter +
+    `<div class="cd"><div class="cd-body" style="padding:0">${rows
+      .map(
+        (e) => `
+      <div class="run-row">
+        <span class="run-ts">${esc(new Date(e.at).toLocaleTimeString())}</span>
+        <span class="run-dev">${esc(e.type)}</span>
+        <div style="flex:1;min-width:0">
+          ${e.provenance ? `<span class="tg tg-record">${esc(e.provenance)}</span>` : ""}
+          ${e.durationMs ? `<span class="tx-micro">${e.durationMs}ms</span>` : ""}
+          ${e.error ? `<div class="tx-caption">${esc(e.error)}</div>` : ""}
+          ${e.hint ? `<div class="tx-micro">${esc(e.hint)}</div>` : ""}
+        </div>
+        ${e.code ? `<span class="bdg bdg-attention">${esc(e.code)}</span>` : ""}
+      </div>`,
+      )
+      .join("")}</div></div>`
+  );
+}
+
 function tabsView(): string {
   const tabs: [Tab, string][] = [
     ["devices", "Devices"],
     ["spaces", "Spaces"],
     ["ports", "Ports"],
+    ["trace", "Trace"],
   ];
   return `<div class="seg">${tabs
     .map(
@@ -448,6 +504,8 @@ function render(): void {
             : "")
         : `<div class="es"><div class="es-title">Nothing listening</div>
              <div class="es-msg">No dev servers or databases are running on either machine.</div></div>`;
+  } else if (state.tab === "trace") {
+    body = traceView();
   } else if (state.pairing) {
     body = pairingView(state.pairing);
   } else if (paired) {
@@ -623,6 +681,13 @@ document.addEventListener("click", (e) => {
   const tab = el.closest("[data-tab]")?.getAttribute("data-tab");
   if (tab) {
     state.tab = tab as Tab;
+    void refresh();
+    return;
+  }
+
+  const traceFilter = el.closest("[data-trace-filter]")?.getAttribute("data-trace-filter");
+  if (traceFilter) {
+    state.traceErrorsOnly = traceFilter === "errors";
     void refresh();
     return;
   }

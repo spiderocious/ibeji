@@ -177,6 +177,7 @@ func run(logger *slog.Logger, apiAddr string, peerPort int, noMDNS bool, instanc
 	go d.ServeInbound(ctx, peerLn)
 	go d.Supervise(ctx)
 	d.StartSyncing(ctx)
+	go d.WatchClipboard(ctx)
 
 	if !noMDNS {
 		go advertise(ctx, logger, d, peerPort)

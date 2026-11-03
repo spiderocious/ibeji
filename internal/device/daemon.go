@@ -88,6 +88,11 @@ type Daemon struct {
 	// last copied out of a password manager.
 	clipboardOn bool
 
+	// notificationsOff inverts the default, which is on: these are the
+	// product's own events, and a sync conflict you are not told about is one
+	// you find out about much later.
+	notificationsOff bool
+
 	// apiEndpoint, apiToken and doctorSecrets let doctor check the local API
 	// and the keychain the way a client would.
 	apiEndpoint   string

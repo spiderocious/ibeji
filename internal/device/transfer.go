@@ -182,6 +182,10 @@ func (d *Daemon) ServeTransferStream(ctx context.Context, stream link.Stream) {
 		if d.events != nil {
 			d.events.Publish(api.EventTransferChanged, map[string]string{"received": path})
 		}
+		// Tell this machine's user, not the sender's: the file landed here.
+		if err := showNotification("Ìbejì", "Received "+filepath.Base(path)); err != nil {
+			d.Logger.Debug("transfer: could not show a notification", "err", err)
+		}
 		_ = transfer.WriteResponse(stream, transfer.Response{Path: path})
 
 	case transfer.OpScratchpad:
@@ -229,6 +233,14 @@ func (d *Daemon) ServeTransferStream(ctx context.Context, stream link.Stream) {
 				Code: "internal", Message: err.Error(),
 			})
 			return
+		}
+		_ = transfer.WriteResponse(stream, transfer.Response{})
+
+	case transfer.OpNotify:
+		// Ìbejì's own events only. Shown rather than stored: a notification
+		// is a nudge, and the activity feed is the durable record.
+		if err := showNotification(req.Title, req.Body); err != nil {
+			d.Logger.Debug("transfer: could not show a notification", "err", err)
 		}
 		_ = transfer.WriteResponse(stream, transfer.Response{})
 

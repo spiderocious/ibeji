@@ -21,6 +21,8 @@ import type {
   PortMeta,
   PortRow,
   SpaceStatus,
+  TraceEvent,
+  TraceStats,
   TunnelRow,
   Result,
   SelfInfo,
@@ -68,6 +70,9 @@ const bridge = {
   closeTunnel: (port: number) => invoke<void>("tunnels:close", port),
 
   prompts: () => invoke<{ prompts: PendingPrompt[] }>("prompts"),
+  trace: (opts?: { errors?: boolean; provenance?: string }) =>
+    invoke<{ events: TraceEvent[] }>("trace", opts),
+  traceStats: () => invoke<TraceStats>("trace:stats"),
   answerPrompt: (id: string, accept: boolean, remember: boolean) =>
     invoke<void>("prompts:answer", id, accept, remember),
 

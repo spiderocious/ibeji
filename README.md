@@ -129,7 +129,7 @@ suite under the race detector — 446 tests across 19 packages. `make e2e` runs
 four suites against two real daemons: pairing and unpairing; remote exec and
 the CLI; spaces, conflicts, the barrier and the agent surface; and the Electron
 window itself, opened against a live paired daemon so all four of its tabs draw
-real data. 44 checks, all passing.
+real data. 45 checks, all passing.
 
 Every bug worth remembering in this codebase was found by running the thing,
 not by a unit test — two daemons displacing each other 46,251 times in fifteen

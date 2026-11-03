@@ -97,16 +97,30 @@ for _ in $(seq 1 20); do
 done
 (( spaced )) && pass "a space exists" || fail "no space to show"
 
-# Traced activity, so the trace tab has entries.
-api "$AEP" "$ATK" POST /v1/exec \
-  '{"deviceId":"","command":"echo from the far machine","provenance":"app"}' > /dev/null
+# Traced activity, so the trace tab has entries. The exec must SUCCEED: a
+# trace full of BAD_REQUEST would satisfy a mere "is it non-empty" check while
+# proving nothing about the view — which is how the first version of this
+# script passed with a malformed body.
+exec_out=$(api "$AEP" "$ATK" POST /v1/exec '{"command":"echo from the far machine"}')
+if grep -q 'from the far machine' <<<"$exec_out"; then
+  pass "a command ran on the far machine"
+else
+  fail "the exec failed: $(head -c 200 <<<"$exec_out")"
+fi
+
 traced=0
 for _ in $(seq 1 10); do
-  n=$(api "$AEP" "$ATK" GET '/v1/trace?limit=50' | field "['events']" 2>/dev/null)
-  [[ -n "$n" && "$n" != "[]" ]] && { traced=1; break; }
+  body=$(api "$AEP" "$ATK" GET '/v1/trace?limit=50')
+  # Succeeded exec events only — an error entry does not prove the pane works.
+  n=$(python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+ev=[e for e in d.get('events',[]) if not e.get('code') and not e.get('error')]
+print(len(ev))" <<<"$body" 2>/dev/null)
+  [[ -n "$n" && "$n" -ge 3 ]] && { traced=1; break; }
   sleep 0.5
 done
-(( traced )) && pass "the trace has entries" || fail "nothing traced"
+(( traced )) && pass "the trace holds successful events ($n)" || fail "the trace has no clean events"
 
 step "Opening the window against it"
 export IBEJI_HANDOFF="$HOME/.ibeji/instances/app-a/api.json"

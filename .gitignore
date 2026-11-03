@@ -1,0 +1,22 @@
+# build output
+/bin/
+/dist/
+*.test
+
+# Go
+vendor/
+
+# node / electron
+node_modules/
+app/out/
+app/.vite/
+
+# local state (never committed — holds keys, tokens, traces)
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.local
+
+# macOS
+.DS_Store

@@ -1,0 +1,23 @@
+/* App chrome only.
+ *
+ * Every component comes from the design system's _components.css; this file
+ * holds the window's own layout and nothing that belongs in a component. If a
+ * rule here starts describing how a button or a row looks, it belongs upstream
+ * in the design system instead. */
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-canvas);
+}
+
+.app-boot {
+  margin: auto;
+  font-family: var(--font-territory);
+  font-size: var(--t-lede);
+  color: var(--text-secondary);
+}
+
+/* The title bar is hiddenInset, so content clears the traffic lights. */
+.app-titlebar-pad { height: 28px; flex: none; -webkit-app-region: drag; }

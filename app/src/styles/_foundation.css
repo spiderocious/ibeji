@@ -1,0 +1,349 @@
+/* VENDORED from design-system/projects/ibeji/preview/_foundation.css
+   Do not edit here. Change it upstream, then re-run
+   app/scripts/sync-design-system.sh
+   Synced: 2026-11-03T11:09:31Z */
+/* ============================================================================
+   ÌBEJÌ — cartographer's atlas foundation · "Chart" treatment
+   One stance, applied everywhere.
+
+   THE LAW
+     Every surface is either TERRITORY or RECORD.
+     TERRITORY is surveyed — the mesh, spaces, ports, routes. Contour ground,
+     drawn connections, map furniture, serif leads.
+     RECORD is inscribed — logs, prompts, file lists, commands. Ruled columns,
+     mono, no ornament.
+     A contour line never enters a log row.
+     A mono record number never sits on open ground.
+
+   THREE REGISTERS THAT NEVER OVERLAP
+     oceanic  #1B6B72  live · linked · surveyed · interactive
+     ochre    #A8701A  attention — a SYSTEM STATE that needs you. NEVER a button.
+     oxblood  #8A2523  irreversible USER action only. Unpair, delete, Bypass.
+
+   Light only, by decision. Tokens are mode-ready (every colour is a variable,
+   no bare hex in components) but no dark palette ships — the product is a
+   daytime companion window, not a focus app.
+   ============================================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root {
+
+  /* ======================================================================
+     1 · PRIMITIVE SCALES — the raw pigments. Components never use these
+     directly; they use the semantic roles below.
+     ====================================================================== */
+
+  /* ---- survey paper: cool-leaning cream. Deliberately NOT the shelf's
+         warm creams (Dipstick #F2EDE2, Solon #F5EFE0, Medcord #F4EFE6) ---- */
+  --paper-50:  #FCFBF7;
+  --paper-100: #FBF9F4;   /* a sheet laid on the desk */
+  --paper-200: #F4F1E9;   /* THE CANVAS */
+  --paper-300: #EDE9DE;   /* recessed / sunken */
+  --paper-400: #E4E0D5;   /* quiet divider */
+  --paper-500: #D6D1C4;   /* hairline */
+  --paper-600: #C2BCAB;   /* heavy hairline */
+
+  /* ---- ink: warm-neutral, never slate ---- */
+  --ink-900: #1A1C1B;   /* near-black, faintly warm-green */
+  --ink-800: #2B2F2E;
+  --ink-700: #3E4342;   /* body */
+  --ink-600: #545A59;
+  --ink-500: #6B7271;   /* secondary */
+  --ink-400: #868C8B;
+  --ink-300: #9AA09E;   /* tertiary / disabled ink */
+  --ink-200: #B6BAB8;
+  --ink-100: #D2D5D3;
+
+  /* ---- oceanic: the ONE accent. Survey-chart water. ---- */
+  --sea-50:  #EEF5F5;
+  --sea-100: #D6E6E7;
+  --sea-200: #AECED0;
+  --sea-300: #7FB0B3;
+  --sea-400: #4E9599;
+  --sea-500: #2A838B;
+  --sea-600: #1B6B72;   /* PRIMARY */
+  --sea-700: #14545A;   /* hover / pressed */
+  --sea-800: #0F464B;
+  --sea-900: #0C3A3E;
+
+  /* ---- ochre: attention. A system state, never an action. ---- */
+  --ochre-50:  #FDF9F0;
+  --ochre-100: #FAF1DF;
+  --ochre-200: #F0DFBB;
+  --ochre-300: #E6CFA0;
+  --ochre-500: #C4902F;
+  --ochre-600: #A8701A;   /* ATTENTION */
+  --ochre-700: #855715;
+  --ochre-900: #5A3A0E;
+
+  /* ---- oxblood: irreversible user action only ---- */
+  --blood-50:  #FDF5F4;
+  --blood-100: #FBEEED;
+  --blood-200: #F2D4D2;
+  --blood-300: #E2BCBA;
+  --blood-600: #8A2523;   /* IRREVERSIBLE */
+  --blood-700: #6F1D1B;
+  --blood-900: #4A1312;
+
+  /* ---- surveyed-good: converged, in-sync, verified ---- */
+  --moss-50:  #EFF4F0;
+  --moss-100: #DDE9E0;
+  --moss-200: #BCD3C2;
+  --moss-600: #3D6B4A;
+  --moss-700: #2F5439;
+  --moss-900: #1E3826;
+
+  /* ---- violet: PROVENANCE. Reserved for the agent/MCP surface, so a
+         machine-originated action can never be confused with one you took. ---- */
+  --prov-50:  #F3F1F8;
+  --prov-100: #E6E2F1;
+  --prov-200: #CBC3E2;
+  --prov-600: #57499A;
+  --prov-700: #453A7C;
+  --prov-900: #2C254F;
+
+
+  /* ======================================================================
+     2 · SEMANTIC ROLES — what components actually reference.
+     ====================================================================== */
+
+  /* ---- surface ---- */
+  --surface-canvas:        var(--paper-200);
+  --surface-canvas-sunken: var(--paper-300);
+  --surface-sheet:         var(--paper-100);
+  --surface-sheet-raised:  var(--paper-50);
+  --surface-inset:         var(--paper-300);
+  --surface-inverse:       var(--ink-900);
+  --surface-tinted:        var(--sea-50);      /* the chart's water-well */
+  --surface-scrim:         rgba(26,28,27,.42);
+
+  /* ---- text ---- */
+  --text-primary:    var(--ink-900);
+  --text-secondary:  var(--ink-600);
+  --text-tertiary:   var(--ink-400);
+  --text-disabled:   var(--ink-300);
+  --text-inverse:    var(--paper-100);
+  --text-link:       var(--sea-600);
+  --text-on-accent:  #FFFFFF;
+
+  /* ---- edges: hairlines, not shadows ---- */
+  --edge-hair:      var(--paper-500);
+  --edge-hair-soft: var(--paper-400);
+  --edge-rule:      var(--ink-900);      /* the rare heavy rule */
+  --edge-tinted:    var(--sea-100);      /* territory card edge */
+  --edge-focus:     var(--sea-600);
+
+  /* ---- the three registers, semantically ---- */
+  --live:        var(--sea-600);
+  --live-soft:   var(--sea-50);
+  --live-edge:   var(--sea-200);
+  --live-on:     var(--sea-900);
+
+  --attention:      var(--ochre-600);
+  --attention-soft: var(--ochre-100);
+  --attention-edge: var(--ochre-300);
+  --attention-on:   var(--ochre-900);
+
+  --irreversible:      var(--blood-600);
+  --irreversible-soft: var(--blood-100);
+  --irreversible-edge: var(--blood-300);
+  --irreversible-on:   var(--blood-900);
+
+  --converged:      var(--moss-600);
+  --converged-soft: var(--moss-50);
+  --converged-edge: var(--moss-200);
+  --converged-on:   var(--moss-900);
+
+  --provenance:      var(--prov-600);
+  --provenance-soft: var(--prov-50);
+  --provenance-edge: var(--prov-200);
+  --provenance-on:   var(--prov-900);
+
+  --unreachable:      var(--ink-300);
+  --unreachable-soft: var(--paper-300);
+  --unreachable-edge: var(--paper-500);
+  --unreachable-on:   var(--ink-600);
+
+  /* ---- THE SEMANTIC QUARTET CONTRACT ----
+     Every semantic type ships base / soft / edge / on. A component asks for a
+     type and gets four coherent values — it never mixes its own tint. This is
+     what stops 26 files hand-mixing 13 versions of "a light green". ---- */
+
+
+  /* ======================================================================
+     3 · STATE LADDER on interactive roles
+     ====================================================================== */
+  --act-default:  var(--sea-600);
+  --act-hover:    var(--sea-700);
+  --act-pressed:  var(--sea-800);
+  --act-disabled: var(--ink-200);
+  --act-loading:  var(--sea-500);
+
+  --act-ghost-hover:   var(--sea-50);
+  --act-ghost-pressed: var(--sea-100);
+
+  --skeleton-base:  var(--paper-300);
+  --skeleton-sweep: var(--paper-100);
+
+
+  /* ======================================================================
+     4 · TYPE — three families, each with a job.
+     Spectral leads (territory, names, prose), Inter is chrome (labels,
+     buttons, dense UI), Plex Mono is the record (addresses, ports, keys,
+     commands, timestamps, byte counts).
+     ====================================================================== */
+  --font-territory: 'Spectral', Georgia, 'Times New Roman', serif;
+  --font-chrome:    'Inter', system-ui, -apple-system, sans-serif;
+  --font-record:    'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+
+  --t-masthead:   40px;
+  --t-lede:       17px;
+  --t-h1:         26px;
+  --t-h2:         19px;
+  --t-h3:         15px;
+  --t-body:       14.5px;
+  --t-body-sm:    13.5px;
+  --t-caption:    12.5px;
+  --t-micro:      11.5px;
+  --t-overline:   10px;
+  --t-record:     13px;
+  --t-record-sm:  11.5px;
+  --t-record-xs:  10.5px;
+
+  /* the figure scale — a port number, a byte count, a code */
+  --t-figure-sm:  20px;
+  --t-figure:     28px;
+  --t-figure-lg:  38px;
+  --t-figure-xl:  52px;   /* the pairing code */
+
+  --track-masthead: .005em;
+  --track-heading:  .01em;
+  --track-overline: .15em;
+  --track-record:   .02em;
+  --track-figure:   .04em;
+
+  --lh-tight:  1.1;
+  --lh-snug:   1.35;
+  --lh-normal: 1.55;
+  --lh-prose:  1.68;
+
+  --measure-prose: 68ch;
+  --measure-lede:  56ch;
+
+
+  /* ======================================================================
+     5 · GEOMETRY — soft chart edges
+     ====================================================================== */
+  --r-xs:   3px;
+  --r-sm:   4px;
+  --r-md:   6px;    /* THE default — cards, wells, buttons */
+  --r-lg:   10px;
+  --r-xl:   14px;
+  --r-pill: 999px;
+
+  --ctl-h-sm: 28px;
+  --ctl-h-md: 36px;   /* THE default control height */
+  --ctl-h-lg: 44px;
+
+  --gutter-page: 32px;
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px;
+  --s-5: 20px; --s-6: 24px; --s-7: 32px; --s-8: 40px; --s-9: 56px;
+
+
+  /* ======================================================================
+     6 · NAMED Z-INDEX SCALE
+     ====================================================================== */
+  --z-base:      0;
+  --z-raised:    10;
+  --z-sticky:    100;
+  --z-drawer:    200;
+  --z-overlay:   300;
+  --z-modal:     400;
+  --z-popover:   500;
+  --z-toast:     600;
+  --z-takeover:  700;
+
+
+  /* ======================================================================
+     7 · MOTION — a chart is drawn, not animated.
+     Routes draw. Figures flip. Nothing bounces.
+     ====================================================================== */
+  --d-instant: 90ms;
+  --d-fast:    150ms;
+  --d-base:    220ms;
+  --d-slow:    360ms;
+  --d-draw:    620ms;    /* a route drawing between two stations */
+  --d-ceremony: 900ms;   /* the pairing plate only */
+
+  --ease-standard:   cubic-bezier(.32,.72,.32,1);
+  --ease-decelerate: cubic-bezier(.05,.7,.1,1);
+  --ease-accelerate: cubic-bezier(.3,0,.8,.15);
+  --ease-draw:       cubic-bezier(.65,0,.35,1);
+
+  --stagger-step: 35ms;
+
+  /* ---- the daemon's pulse. The ONE ambient loop in the system. ---- */
+  --pulse-period: 2.6s;
+
+  /* ======================================================================
+     8 · SHADOW — reserved for overlays only. Cards use hairlines.
+     ====================================================================== */
+  --shadow-none:    none;
+  --shadow-popover: 0 2px 10px rgba(26,28,27,.10), 0 0 0 1px var(--paper-500);
+  --shadow-modal:   0 8px 32px rgba(26,28,27,.16), 0 0 0 1px var(--paper-500);
+  --shadow-toast:   0 3px 14px rgba(26,28,27,.13), 0 0 0 1px var(--paper-500);
+}
+
+/* ============================================================================
+   CONTOUR GROUND — the atlas's living texture. TERRITORY surfaces only.
+   Never behind a log, a table, or a file list.
+   ============================================================================ */
+.contour {
+  background-image:
+    repeating-radial-gradient(circle at 18% 120%, transparent 0 22px, rgba(27,107,114,.055) 22px 23px),
+    repeating-radial-gradient(circle at 82% -20%, transparent 0 26px, rgba(27,107,114,.045) 26px 27px);
+}
+.contour-dense {
+  background-image:
+    repeating-radial-gradient(circle at 30% 110%, transparent 0 14px, rgba(27,107,114,.06) 14px 15px),
+    repeating-radial-gradient(circle at 78% -10%, transparent 0 17px, rgba(27,107,114,.05) 17px 18px);
+}
+
+/* ============================================================================
+   BASE
+   ============================================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font-family: var(--font-chrome);
+  font-size: var(--t-body);
+  line-height: var(--lh-normal);
+  color: var(--text-primary);
+  background: var(--surface-canvas);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+::selection { background: var(--sea-100); color: var(--sea-900); }
+
+/* focus: a drawn ring, never a browser default */
+:focus-visible {
+  outline: 2px solid var(--edge-focus);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+
+/* every figure in the system is tabular */
+.fig-num, .rec, .num {
+  font-family: var(--font-record);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--track-record);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

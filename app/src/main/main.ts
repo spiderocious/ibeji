@@ -14,6 +14,7 @@
 import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage } from "electron";
 import { join } from "node:path";
 import { ApiClient, ApiError, DaemonUnreachableError } from "./api.js";
+import { ensureInstalled } from "./selfinstall.js";
 
 /**
  * IBEJI_HANDOFF overrides where the window looks for the daemon's endpoint and
@@ -31,6 +32,25 @@ let unsubscribeEvents: (() => void) | undefined;
 
 /** Paper-200, the design system's canvas. Set so the window never flashes white. */
 const CANVAS = "#F4F1E9";
+
+/**
+ * Wait, briefly, for a just-installed daemon to start answering.
+ *
+ * launchd's bootstrap returns as soon as the job is loaded, not when the
+ * process is serving, so a window drawn immediately afterwards races it and
+ * shows the empty state. Polling beats a fixed sleep: it is usually instant.
+ */
+async function waitForDaemon(timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      await api.self();
+      return;
+    } catch {
+      await new Promise((r) => setTimeout(r, 150));
+    }
+  }
+}
 
 function createWindow(): BrowserWindow {
   const w = new BrowserWindow({
@@ -184,6 +204,17 @@ if (!app.requestSingleInstanceLock()) {
   void app.whenReady().then(async () => {
     registerHandlers();
     createTray();
+
+    // Set the machine up before the window draws. Doing this first means a
+    // fresh install opens onto a working app rather than onto "Ìbejì is not
+    // running" and a README instruction to go and fix it by hand.
+    const setup = await ensureInstalled();
+    if (setup.daemon === "installed" || setup.daemon === "repointed") {
+      // launchd returns before the daemon is listening; give it a moment so
+      // the first render finds an API rather than a closed port.
+      await waitForDaemon(5000);
+    }
+
     win = createWindow();
     await subscribeEvents();
 

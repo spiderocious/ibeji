@@ -81,19 +81,51 @@ var cmdInstall = &Command{
 	},
 }
 
-// defaultPrefix picks a PATH directory that exists.
+// defaultPrefix picks a directory that is on PATH and writable without sudo.
 //
-// /usr/local/bin is on the default PATH and is writable without sudo on most
-// developer Macs; ~/.local/bin is the fallback for a locked-down machine.
+// /usr/local/bin is root-owned on a stock macOS install, so defaulting to it
+// meant the common case ended in "could not write … run: sudo ln -sf …". That
+// is a password prompt for a symlink, which is not a reasonable thing to ask.
+// A writable directory already on PATH is preferred; ~/.local/bin is the
+// conventional fallback and is created if missing.
 func defaultPrefix() string {
-	if st, err := os.Stat("/usr/local/bin"); err == nil && st.IsDir() {
-		return "/usr/local/bin"
-	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "/usr/local/bin"
 	}
+	onPath := make(map[string]bool)
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		onPath[dir] = true
+	}
+	for _, dir := range []string{
+		filepath.Join(home, ".local", "bin"),
+		"/usr/local/bin",
+		filepath.Join(home, "bin"),
+	} {
+		if onPath[dir] && writable(dir) {
+			return dir
+		}
+	}
 	return filepath.Join(home, ".local", "bin")
+}
+
+// writable reports whether a directory exists and this user can create in it.
+//
+// Checked by writing rather than by inspecting the mode bits, because the mode
+// does not account for ACLs, group membership or a read-only mount.
+func writable(dir string) bool {
+	st, err := os.Stat(dir)
+	if err != nil || !st.IsDir() {
+		return false
+	}
+	probe, err := os.CreateTemp(dir, ".ibeji-write-probe-")
+	if err != nil {
+		return false
+	}
+	name := probe.Name()
+	probe.Close()
+	os.Remove(name)
+	return true
 }
 
 // locateBinaries finds the daemon and CLI next to the running executable.

@@ -86,3 +86,47 @@ func containsAll(s string, subs ...string) bool {
 	}
 	return true
 }
+
+// The default prefix must never be a directory we cannot write. Defaulting to
+// root-owned /usr/local/bin turned the common install into a sudo prompt for a
+// symlink, which is not a reasonable thing to ask of someone opening an app.
+func TestDefaultPrefixIsWritable(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("PATH", "/usr/bin:"+filepath.Join(dir, ".local", "bin"))
+
+	// With ~/.local/bin on PATH but not yet created, the fallback still names
+	// it: ensureInstalled and `ibeji install` both create it.
+	if got := defaultPrefix(); got != filepath.Join(dir, ".local", "bin") {
+		t.Fatalf("defaultPrefix() = %s, want the home-local bin", got)
+	}
+
+	// Once it exists and is writable, it must be chosen over /usr/local/bin.
+	local := filepath.Join(dir, ".local", "bin")
+	if err := os.MkdirAll(local, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", "/usr/local/bin:"+local)
+	if got := defaultPrefix(); got != local {
+		t.Fatalf("defaultPrefix() = %s, want %s (writable beats root-owned)", got, local)
+	}
+}
+
+// writable must answer by trying, not by reading mode bits: a directory can be
+// mode 0755 and still refuse a write because of an ACL or a read-only mount.
+func TestWritableRejectsAReadOnlyDirectory(t *testing.T) {
+	dir := t.TempDir()
+	ro := filepath.Join(dir, "ro")
+	if err := os.Mkdir(ro, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root can write anywhere")
+	}
+	if writable(ro) {
+		t.Fatal("writable() said yes for a directory with no write permission")
+	}
+	if !writable(dir) {
+		t.Fatal("writable() said no for a directory we own")
+	}
+}

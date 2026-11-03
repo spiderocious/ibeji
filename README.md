@@ -90,33 +90,23 @@ All releases, plus CLI-only tarballs and checksums, are on the
 [releases page](https://github.com/spiderocious/ibeji/releases/latest).
 
 1. Open the DMG and drag **Ibeji** to Applications.
-2. The app is **signed but not notarized** — notarizing needs a paid Apple
-   Developer account. macOS will refuse the first launch with *"Apple could
-   not verify Ibeji is free of malware"*, offering only **Move to Trash** and
-   **Done**. Clear it once, with either:
+2. The app is signed but **not notarized** — that needs a paid Apple Developer
+   account. macOS refuses the first launch with *"Apple could not verify Ibeji
+   is free of malware"*, offering only **Move to Trash** and **Done**. Clear it
+   once, either in **System Settings → Privacy & Security → Open Anyway**, or:
 
    ```sh
    xattr -dr com.apple.quarantine /Applications/Ibeji.app
    ```
 
-   or **System Settings → Privacy & Security**, scroll to the message about
-   Ibeji, and click **Open Anyway**.
-
    (Right-click → Open does *not* work on current macOS. If you ever see
-   "Ibeji is **damaged** and can't be opened", that is a different and genuine
-   fault — please file an issue rather than working around it.)
-3. In a terminal, install the background daemon and the `ibeji` command:
+   "Ibeji is **damaged**", that is a different and genuine fault — please file
+   an issue rather than working around it.)
+3. **Open Ibeji.** That is the whole install: the app sets up the background
+   daemon so it starts at login, and puts `ibeji` on your PATH, by itself.
 
-   ```sh
-   /Applications/Ibeji.app/Contents/Resources/bin/ibeji install
-   ```
-
-   This sets up a LaunchAgent so the daemon starts when you log in, and links
-   `ibeji` into `/usr/local/bin`. It never needs `sudo` — and refuses to run
-   under it, because a root daemon cannot reach your keychain or your GUI
-   session.
-
-4. Run `ibeji doctor`. Every failure it reports names its own fix.
+4. Optional: run `ibeji doctor` in a terminal to confirm. Every failure it
+   reports names its own fix.
 
 Then do the same on the second Mac, and pair them from the window: one machine
 shows a six-digit code, the other must show the same six digits. Both are on

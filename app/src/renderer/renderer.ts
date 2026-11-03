@@ -250,6 +250,141 @@ function pairingView(p: PairingSession): string {
     </div>`;
 }
 
+/**
+ * A permission prompt.
+ *
+ * Asker and Effect are required slots in the design system: an unattributed
+ * prompt cannot render, because a LAN tool that asks "allow this?" without
+ * naming the asker is how you approve the wrong machine. The renderer refuses
+ * to draw one that is missing either, rather than drawing a prompt that would
+ * be answered blind.
+ */
+function promptView(p: PendingPrompt): string {
+  if (!p.asker || !p.effect) {
+    return `<div class="callout callout-attention"><div class="callout-body">
+      A request arrived without saying who is asking or what it would do. It was not shown,
+      and it will expire unanswered.</div></div>`;
+  }
+  const seconds = Math.max(0, Math.round((new Date(p.expiresAt).getTime() - Date.now()) / 1000));
+  return `
+    <div class="cd" data-prompt="${esc(p.id)}">
+      <div class="cd-head"><div class="cd-title">${esc(p.asker)} wants to ${esc(p.kind)}</div></div>
+      <div class="cd-body">
+        <div class="rec" style="font-size:var(--t-record);margin-bottom:var(--s-3)">${esc(p.effect)}</div>
+        ${p.cwd ? `<div class="tx-caption rec">in ${esc(p.cwd)}</div>` : ""}
+        ${
+          p.provenance === "mcp"
+            ? `<div style="margin-top:var(--s-3)"><span class="bdg bdg-provenance">Machine-originated</span></div>`
+            : ""
+        }
+        <div class="tx-micro" style="margin-top:var(--s-3)">expires in ${seconds}s</div>
+      </div>
+      <div class="cd-foot">
+        <button class="btn btn-primary btn-sm" data-answer="accept" data-id="${esc(p.id)}">Accept</button>
+        <button class="btn btn-secondary btn-sm" data-answer="decline" data-id="${esc(p.id)}">Decline</button>
+        <button class="btn btn-tertiary btn-sm" data-answer="remember" data-id="${esc(p.id)}">
+          Always allow this here
+        </button>
+      </div>
+    </div>`;
+}
+
+/** A shared folder, with its conflicts resolvable in place. */
+function spaceView(s: SpaceStatus): string {
+  const conflicts = s.conflicts ?? [];
+  const badge =
+    s.state === "in-sync"
+      ? "bdg-converged"
+      : s.state === "conflict"
+        ? "bdg-attention"
+        : "bdg-neutral";
+
+  return `
+    <div class="cd">
+      <div class="cd-head">
+        <div class="cd-title">${esc(s.name)}</div>
+        <span class="bdg ${badge}">${esc(s.state)}</span>
+      </div>
+      <div class="cd-body">
+        <div class="tx-caption rec">${esc(s.path)}</div>
+        <div class="tx-micro">${s.role} · ${s.files} files · ${formatBytes(s.bytes)}</div>
+        ${
+          conflicts.length === 0
+            ? ""
+            : `<div style="margin-top:var(--s-4)">${conflicts
+                .map(
+                  (c) => `
+          <div class="callout callout-attention">
+            <div class="callout-title">${esc(c.rel)}</div>
+            <div class="callout-body">
+              The master's version is in place. Yours is kept as
+              <span class="rec">${esc(c.copy)}</span>.
+            </div>
+            <div style="margin-top:var(--s-3);display:flex;gap:var(--s-2)">
+              <button class="btn btn-secondary btn-sm"
+                data-promote="${esc(c.rel)}" data-space="${esc(s.name)}">Promote mine</button>
+              <button class="btn btn-tertiary btn-sm"
+                data-discard="${esc(c.rel)}" data-space="${esc(s.name)}">Discard mine</button>
+            </div>
+          </div>`,
+                )
+                .join("")}</div>`
+        }
+      </div>
+    </div>`;
+}
+
+/** One listening port, with its tunnel if it has one. */
+function portView(p: PortRow, tunnel: TunnelRow | undefined, local: boolean): string {
+  const name = p.service || p.process;
+  return `
+    <div class="prt-row">
+      <span class="prt-num">${p.port}</span>
+      <div style="min-width:0">
+        <div class="prt-svc">${esc(name)}</div>
+        <div class="prt-proc">${esc(p.process)} · ${esc(p.device ?? "")}</div>
+      </div>
+      <div class="dev-meta">
+        ${
+          tunnel
+            ? `<span class="prt-route">→ localhost:${tunnel.localPort}${
+                tunnel.remapped ? " (remapped)" : ""
+              }</span>
+               <button class="btn btn-tertiary btn-sm" data-untunnel="${p.port}">Disconnect</button>`
+            : local
+              ? `<span class="tx-micro">here</span>`
+              : `<button class="btn btn-secondary btn-sm" data-tunnel="${p.port}">Link</button>`
+        }
+      </div>
+    </div>`;
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = n / 1024;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i++;
+  }
+  return `${value.toFixed(1)} ${units[i]}`;
+}
+
+function tabsView(): string {
+  const tabs: [Tab, string][] = [
+    ["devices", "Devices"],
+    ["spaces", "Spaces"],
+    ["ports", "Ports"],
+  ];
+  return `<div class="seg">${tabs
+    .map(
+      ([id, label]) =>
+        `<button class="seg-item${state.tab === id ? " is-selected" : ""}" data-tab="${id}">${label}</button>`,
+    )
+    .join("")}</div>`;
+}
+
 function noticeView(): string {
   if (!state.notice) return "";
   const n = state.notice;
@@ -281,8 +416,39 @@ function render(): void {
       </div>
     </header>`;
 
+  // A waiting prompt outranks every other view: it blocks a caller on the
+  // other machine, and it expires in sixty seconds.
+  if (state.prompts.length > 0) {
+    root.innerHTML = `
+      <div class="app-titlebar-pad"></div>
+      ${header}
+      ${noticeView()}
+      <main class="app-main">${state.prompts.map(promptView).join("")}</main>`;
+    return;
+  }
+
   let body: string;
-  if (state.pairing) {
+  if (state.tab === "spaces") {
+    body =
+      state.spaces.length > 0
+        ? state.spaces.map(spaceView).join("")
+        : `<div class="es"><div class="es-title">No spaces</div>
+             <div class="es-msg">A space keeps a folder identical on both machines.
+             Create one from a folder you work in.</div></div>`;
+  } else if (state.tab === "ports") {
+    const byPort = new Map(state.tunnels.map((t) => [t.remotePort, t]));
+    const selfName = state.self?.name ?? "";
+    body =
+      state.ports.length > 0
+        ? `<div class="cd"><div class="cd-body" style="padding:0">${state.ports
+            .map((p) => portView(p, byPort.get(p.port), p.device === selfName))
+            .join("")}</div></div>` +
+          (state.portMeta?.remoteStale && state.portMeta.reason
+            ? `<div class="banner banner-stale">${esc(state.portMeta.reason)}</div>`
+            : "")
+        : `<div class="es"><div class="es-title">Nothing listening</div>
+             <div class="es-msg">No dev servers or databases are running on either machine.</div></div>`;
+  } else if (state.pairing) {
     body = pairingView(state.pairing);
   } else if (paired) {
     body = `
@@ -319,6 +485,7 @@ function render(): void {
   root.innerHTML = `
     <div class="app-titlebar-pad"></div>
     ${header}
+    ${state.devices.length > 0 ? `<div class="app-tabs">${tabsView()}</div>` : ""}
     ${noticeView()}
     <main class="app-main">${body}</main>`;
 }
@@ -393,6 +560,52 @@ async function toggleMode(deviceId: string): Promise<void> {
   await refresh();
 }
 
+async function answerPrompt(id: string, accept: boolean, remember: boolean): Promise<void> {
+  const res = await window.ibeji.answerPrompt(id, accept, remember);
+  if (res.ok) {
+    notify(
+      accept ? (remember ? "Allowed, and remembered." : "Allowed.") : "Declined.",
+      accept ? "live" : "attention",
+    );
+  } else {
+    unwrap(res);
+  }
+  await refresh();
+}
+
+async function resolveConflict(space: string, path: string, promote: boolean): Promise<void> {
+  const res = promote
+    ? await window.ibeji.promote(space, path)
+    : await window.ibeji.discard(space, path);
+  if (res.ok) {
+    notify(promote ? "Your version was promoted." : "Your version was discarded.", "live");
+  } else {
+    unwrap(res);
+  }
+  await refresh();
+}
+
+async function openTunnel(port: number): Promise<void> {
+  const res = await window.ibeji.openTunnel(port);
+  const value = unwrap(res);
+  if (value) {
+    // Always report the local port: assuming it matched is how an hour goes
+    // missing wondering why the wrong app is answering.
+    notify(
+      value.tunnel.remapped
+        ? `Port ${port} is taken here — it is on localhost:${value.tunnel.localPort}.`
+        : `localhost:${value.tunnel.localPort} now serves it.`,
+      value.tunnel.remapped ? "attention" : "live",
+    );
+  }
+  await refresh();
+}
+
+async function closeTunnel(port: number): Promise<void> {
+  unwrap(await window.ibeji.closeTunnel(port));
+  await refresh();
+}
+
 async function addByIP(): Promise<void> {
   const address = window.prompt(
     "Add the other machine by IP address.\n\n" +
@@ -405,7 +618,54 @@ async function addByIP(): Promise<void> {
 // --- wiring -----------------------------------------------------------------
 
 document.addEventListener("click", (e) => {
-  const target = (e.target as HTMLElement).closest("[data-action],[data-pair]");
+  const el = e.target as HTMLElement;
+
+  const tab = el.closest("[data-tab]")?.getAttribute("data-tab");
+  if (tab) {
+    state.tab = tab as Tab;
+    void refresh();
+    return;
+  }
+
+  const answer = el.closest("[data-answer]");
+  if (answer) {
+    const id = answer.getAttribute("data-id") ?? "";
+    const kind = answer.getAttribute("data-answer");
+    void answerPrompt(id, kind !== "decline", kind === "remember");
+    return;
+  }
+
+  const promote = el.closest("[data-promote]");
+  if (promote) {
+    void resolveConflict(
+      promote.getAttribute("data-space") ?? "",
+      promote.getAttribute("data-promote") ?? "",
+      true,
+    );
+    return;
+  }
+  const discard = el.closest("[data-discard]");
+  if (discard) {
+    void resolveConflict(
+      discard.getAttribute("data-space") ?? "",
+      discard.getAttribute("data-discard") ?? "",
+      false,
+    );
+    return;
+  }
+
+  const tunnel = el.closest("[data-tunnel]");
+  if (tunnel) {
+    void openTunnel(Number(tunnel.getAttribute("data-tunnel")));
+    return;
+  }
+  const untunnel = el.closest("[data-untunnel]");
+  if (untunnel) {
+    void closeTunnel(Number(untunnel.getAttribute("data-untunnel")));
+    return;
+  }
+
+  const target = el.closest("[data-action],[data-pair]");
   if (!target) return;
 
   const pairAddress = target.getAttribute("data-pair");

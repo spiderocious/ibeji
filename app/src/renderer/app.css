@@ -61,3 +61,11 @@
   font-weight: 300;
   letter-spacing: .14em;
 }
+
+/* The tab strip. The segmented control itself is a design-system component;
+ * this is only where it sits. */
+.app-tabs {
+  padding: 0 var(--s-6) var(--s-3);
+  border-bottom: 1px solid var(--paper-400);
+  flex: none;
+}

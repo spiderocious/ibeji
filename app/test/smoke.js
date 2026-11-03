@@ -102,6 +102,30 @@ app.whenReady().then(async () => {
 
   writeFileSync(OUT, (await win.webContents.capturePage()).toPNG());
 
+  // Exercise the other tabs too: a view that only renders when clicked is a
+  // view that breaks without anyone noticing.
+  for (const tab of ["spaces", "ports"]) {
+    const clicked = await win.webContents.executeJavaScript(
+      `(() => { const el = document.querySelector('[data-tab="${tab}"]');
+                if (!el) return false; el.click(); return true; })()`,
+    );
+    if (!clicked) continue;
+    await new Promise((r) => setTimeout(r, 1500));
+    const shot = OUT.replace(/\.png$/, `-${tab}.png`);
+    writeFileSync(shot, (await win.webContents.capturePage()).toPNG());
+    const rendered = await win.webContents.executeJavaScript(
+      `!!document.querySelector(".cd, .es, .prt-row")`,
+    );
+    if (!rendered) fail(`the ${tab} tab rendered nothing`);
+    const strays = await win.webContents.executeJavaScript(
+      `[...new Set([...document.querySelectorAll("[class]")].flatMap(e => [...e.classList]))]`,
+    );
+    for (const c of strays) {
+      if (!probe.usedClasses.includes(c)) probe.usedClasses.push(c);
+    }
+    console.log(`  ${tab} tab      rendered (${shot})`);
+  }
+
   const checks = [
     [probe.sheetCount >= 3, `expected >=3 stylesheets, got ${probe.sheetCount}`],
     [probe.tokenCanvas === "#F4F1E9", `--surface-canvas = ${probe.tokenCanvas} (design system not loaded)`],

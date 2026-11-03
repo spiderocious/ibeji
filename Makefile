@@ -71,10 +71,11 @@ check: vet
 	@test -z "$$(gofmt -s -l . | tee /dev/stderr)" || { echo 'gofmt -s -w . needed'; exit 1; }
 	go test -race -count=1 ./...
 
-## e2e: run two real daemons, pair them over TCP, then unpair
+## e2e: the end-to-end runs — pairing, then remote exec
 .PHONY: e2e
 e2e: build
 	./test/e2e-pair.sh
+	./test/e2e-exec.sh
 
 ## smoke: build the window and check it against a running daemon
 .PHONY: smoke

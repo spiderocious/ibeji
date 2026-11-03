@@ -18,8 +18,13 @@ import (
 
 	"github.com/feranmi/ibeji/internal/api"
 	"github.com/feranmi/ibeji/internal/discovery"
+	"github.com/feranmi/ibeji/internal/doctor"
 	"github.com/feranmi/ibeji/internal/identity"
+	"github.com/feranmi/ibeji/internal/launchagent"
 	"github.com/feranmi/ibeji/internal/link"
+	"github.com/feranmi/ibeji/internal/permission"
+	"github.com/feranmi/ibeji/internal/remote"
+	"github.com/feranmi/ibeji/internal/trace"
 )
 
 // Daemon holds the device's state and its connection to the peer.
@@ -48,6 +53,22 @@ type Daemon struct {
 	keyMismatch bool
 	// listenAddr is where this daemon accepts peer connections.
 	listenAddr string
+
+	// perms decides every incoming side effect. One engine per device.
+	perms *permission.Engine
+
+	// tracer records what happened, for `ibeji trace`.
+	tracer *trace.Recorder
+
+	// remoteServer answers the peer's requests. Built lazily and kept, so the
+	// process table survives across streams.
+	remoteServer *remote.Server
+
+	// apiEndpoint, apiToken and doctorSecrets let doctor check the local API
+	// and the keychain the way a client would.
+	apiEndpoint   string
+	apiToken      string
+	doctorSecrets doctor.SecretStore
 }
 
 // EventPublisher is how the daemon tells clients what changed.
@@ -97,7 +118,8 @@ func New(opts Options) (*Daemon, error) {
 		events:   opts.Events,
 		// Prompt is the default: a machine that asks before running things is
 		// the safe starting point, and Bypass is a deliberate, guarded choice.
-		mode: api.ModePrompt,
+		mode:  api.ModePrompt,
+		perms: permission.New(nil),
 	}, nil
 }
 
@@ -237,7 +259,21 @@ func (d *Daemon) SetMode(deviceID string, mode api.Mode) error {
 	}
 	d.mu.Lock()
 	d.mode = mode
+	engine := d.perms
 	d.mu.Unlock()
+
+	// The engine is what actually decides; the stored value is only what the
+	// UI reports. Letting them drift would mean a mode the user set having no
+	// effect on what runs.
+	if engine != nil {
+		pm := permission.ModePrompt
+		if mode == api.ModeBypass {
+			pm = permission.ModeBypass
+		}
+		if err := engine.SetMode(pm); err != nil {
+			return err
+		}
+	}
 	d.Logger.Info("device: permission mode changed", "mode", mode)
 	return nil
 }
@@ -272,6 +308,13 @@ func (d *Daemon) Unpair(deviceID string) error {
 	// which made unpairing look like it had done nothing.
 	if n := d.pairer.Clear(); n > 0 {
 		d.Logger.Info("device: abandoned pairing attempts on unpair", "count", n)
+	}
+	// A revoked device's remembered approvals must not survive to greet it if
+	// it is ever paired again.
+	if d.perms != nil {
+		if n := d.perms.Rules().RevokeAll(); n > 0 {
+			d.Logger.Info("device: revoked remembered rules on unpair", "count", n)
+		}
 	}
 	d.mu.Lock()
 	conn := d.conn
@@ -460,4 +503,117 @@ func (d *Daemon) Advertisement(port int) discovery.Advertisement {
 		Port:      port,
 		PublicKey: d.store.Self().Public(),
 	}
+}
+
+// --- remote, permissions, trace ---
+
+// Remote implements api.RemoteState: a client for the paired device.
+func (d *Daemon) Remote() (*remote.Client, error) {
+	if !d.store.Paired() {
+		return nil, identity.ErrNotPaired
+	}
+	if d.Conn() == nil {
+		// Unreachable is normal on a LAN — the other machine is asleep — so
+		// this is a status the UI renders, not an error it alarms about.
+		return nil, link.ErrNotLinked
+	}
+	return &remote.Client{Conn: d.Conn, Provenance: "api"}, nil
+}
+
+// RemoteServer answers what the peer asks of this machine.
+//
+// Built once and reused: it owns the process table, so a dev server started
+// through one stream must still be listable and killable through another.
+func (d *Daemon) RemoteServer() *remote.Server {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.remoteServer == nil {
+		s := remote.NewServer(nil, d.perms, d.Logger)
+		s.PeerName = d.PeerName
+		s.Trace = func(ev remote.TraceEvent) {
+			d.RecordTrace(trace.Event{
+				Type:       ev.Type,
+				Device:     ev.Device,
+				Provenance: ev.Provenance,
+				Request:    trace.Redact(ev.Request),
+				Response:   trace.Redact(ev.Response),
+				Code:       ev.Code,
+				Error:      ev.Error,
+				Hint:       ev.Hint,
+				DurationMS: ev.DurationMS,
+			})
+		}
+		d.remoteServer = s
+	}
+	return d.remoteServer
+}
+
+// Permissions implements api.DiagnosticState.
+func (d *Daemon) Permissions() *permission.Engine { return d.perms }
+
+// Trace implements api.DiagnosticState.
+func (d *Daemon) Trace() *trace.Recorder { return d.tracer }
+
+// SetTrace attaches a trace recorder.
+func (d *Daemon) SetTrace(r *trace.Recorder) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.tracer = r
+}
+
+// RecordTrace writes an event, if tracing is on.
+//
+// Payloads are redacted here rather than at each call site: a filter applied
+// where events are written is one place to get right, and the two absolute
+// exclusions — clipboard contents, file bodies — must not depend on every
+// future caller remembering them.
+func (d *Daemon) RecordTrace(ev trace.Event) {
+	d.mu.RLock()
+	rec := d.tracer
+	d.mu.RUnlock()
+	if rec == nil {
+		return
+	}
+	rec.Record(ev)
+}
+
+// Doctor implements api.DiagnosticState.
+func (d *Daemon) Doctor() doctor.Report {
+	cfg := doctor.Config{
+		LaunchAgentLabel: launchagent.Label,
+		Secrets:          d.doctorSecrets,
+		Endpoint:         d.apiEndpoint,
+		Token:            d.apiToken,
+		PeerName:         d.PeerName(),
+		Link:             linkState{d},
+	}
+	if host := d.PeerName(); host != "" {
+		cfg.ResolvePeer = doctor.ResolveViaDNS(host)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	return doctor.Standard(cfg).Run(ctx)
+}
+
+// linkState adapts the daemon to doctor.LinkState.
+//
+// An adapter rather than a method rename: Paired() means "is a device paired"
+// to doctor and "which device is paired" to the API, and both readings are
+// right in their own context. Contorting either interface to avoid the clash
+// would make one of them worse for no gain.
+type linkState struct{ d *Daemon }
+
+func (l linkState) Paired() bool        { return l.d.Store().Paired() }
+func (l linkState) PeerName() string    { return l.d.PeerName() }
+func (l linkState) PeerAddress() string { return l.d.PeerAddress() }
+func (l linkState) LinkUp() bool        { return l.d.LinkUp() }
+func (l linkState) KeyMatches() bool    { return l.d.KeyMatches() }
+
+// SetAPIDetails records where the local API is, for doctor's own check of it.
+func (d *Daemon) SetAPIDetails(endpoint, token string, secrets doctor.SecretStore) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.apiEndpoint = endpoint
+	d.apiToken = token
+	d.doctorSecrets = secrets
 }

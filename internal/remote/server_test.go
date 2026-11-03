@@ -64,11 +64,11 @@ func serve(t *testing.T, s *Server, req Request) (Response, link.Stream) {
 		t.Fatalf("write: %v", err)
 	}
 
-	resp := readResponse(t, stream)
+	resp := readResponseT(t, stream)
 	return resp, stream
 }
 
-func readResponse(t *testing.T, stream link.Stream) Response {
+func readResponseT(t *testing.T, stream link.Stream) Response {
 	t.Helper()
 	if err := stream.SetReadDeadline(time.Now().Add(20 * time.Second)); err != nil {
 		t.Fatalf("deadline: %v", err)
@@ -330,7 +330,7 @@ func TestExecStreamsOutputAndExitCode(t *testing.T) {
 	var stdout, stderr strings.Builder
 	var exit ExitStatus
 	for {
-		kind, body, err := readOutputFrame(stream)
+		kind, body, err := readOutputFrameT(stream)
 		if err != nil {
 			t.Fatalf("read output: %v", err)
 		}
@@ -358,7 +358,7 @@ func TestExecStreamsOutputAndExitCode(t *testing.T) {
 	}
 }
 
-func readOutputFrame(stream link.Stream) (OutputKind, []byte, error) {
+func readOutputFrameT(stream link.Stream) (OutputKind, []byte, error) {
 	if err := stream.SetReadDeadline(time.Now().Add(20 * time.Second)); err != nil {
 		return 0, nil, err
 	}
@@ -474,7 +474,7 @@ func TestMalformedRequestIsRefused(t *testing.T) {
 	if _, err := stream.Write([]byte("{not json")); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	resp := readResponse(t, stream)
+	resp := readResponseT(t, stream)
 	if resp.Code != "bad_request" {
 		t.Fatalf("code = %q, want bad_request", resp.Code)
 	}

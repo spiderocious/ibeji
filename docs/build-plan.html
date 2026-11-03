@@ -363,14 +363,13 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
 
 <header class="mast contour">
   <div class="in">
-    <span class="eyebrow">Ìbejì · build plan for review · 3 November 2026</span>
+    <span class="eyebrow">Ìbejì · build plan · 3 November 2026</span>
     <h1>Two machines, <em>one territory</em></h1>
-    <p class="lede">Ìbejì links your Laptop and your Desktop into a trusted pair on the LAN. Once paired they share folders, expose each other's dev-server ports as local, and answer to a CLI, an HTTP API and an MCP server — so you and Claude Code can both treat the other machine as extended workspace. This plan takes the PRD module by module: how each one works, what it is built on, what it looks like, and the order it all gets built in. Every screen below is drawn in Ìbejì's own system — survey paper, contour ground, drawn routes.</p>
+    <p class="lede">Anyone with two computers knows the shape of the problem: you edit on the one with your setup, and the thing you are editing can only build, run or deploy on the other. Ìbejì links the two into a trusted pair on the LAN. Once paired they share folders, expose each other's dev-server ports as local, and answer to a CLI, an HTTP API and an MCP server — so you and your coding agent can both treat the other machine as extended workspace. This plan takes the PRD module by module: how each one works, what it is built on, what it looks like, and the order it all gets built in. Every screen below is drawn in Ìbejì's own system — survey paper, contour ground, drawn routes.</p>
     <div class="rule"></div>
     <div class="chips">
-      <span class="chip conv">PRD settled · 236 lines · 9 modules</span>
+      <span class="chip conv">Nine modules · four milestones</span>
       <span class="chip conv">Design system built · 113 specimens, lint clean</span>
-      <span class="chip att">Nothing written yet · 0 lines of product code</span>
       <span class="chip live">macOS first · LAN only · exactly two devices</span>
       <span class="chip conv">All four milestones in scope</span>
       <span class="chip" style="margin-left:auto"><span class="daemon"><i></i>daemon · alive</span></span>
@@ -403,10 +402,10 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
 
 <section class="sheet" id="stance">
   <div class="sh"><h2>Where this stands</h2></div>
-  <p class="sub">Green is decided — in the PRD, in the design system, or in our chat. Ochre is what this plan proposes and needs your yes before I build it.</p>
+  <p class="sub">Green is decided — in the PRD or in the design system. Ochre is what this plan proposes rather than inherits.</p>
   <div class="decisions">
     <div class="dec"><span class="t">✓</span><div><b>Exactly two devices in v1</b><span>A mesh of three or more is deferred. The trust unit is the device pair; there are no accounts and no admin.</span></div></div>
-    <div class="dec"><span class="t">✓</span><div><b>LAN only, and no VPN bridging ever</b><span>Nothing touches the internet. The VPN stays on one machine and what crosses the LAN is a command, a tunnel or a URL — never routed traffic.</span></div></div>
+    <div class="dec"><span class="t">✓</span><div><b>LAN only, and no network bridging ever</b><span>Nothing touches the internet. Each machine keeps its own access, and what crosses the LAN is a command, a tunnel or a URL — never routed traffic.</span></div></div>
     <div class="dec"><span class="t">✓</span><div><b>The API is the product</b><span>One local HTTP API. The Electron window, the CLI and the MCP server are all clients of it — no feature exists in the UI only.</span></div></div>
     <div class="dec"><span class="t">✓</span><div><b>Prompts expire at 60 seconds</b><span>Then <code>timed_out</code>, distinguishable from <code>declined</code>, logged as expired. No pending queue, no retroactive approval.</span></div></div>
     <div class="dec"><span class="t">✓</span><div><b>Reads are unscoped in v1</b><span>By decision, not oversight: Prompt mode means cannot run anything, can read everything. Path scoping is v2.</span></div></div>
@@ -469,7 +468,7 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
     Record is inscribed — logs, prompts, file lists, commands, addresses: ruled columns, IBM Plex Mono, no ornament.<br>
     <em>A contour line never enters a log row. A mono record number never sits on open ground.</em>
   </div>
-  <p class="note" style="margin-top:12px"><b>Why it matters to the build, not just the look.</b> It is the one falsifiable rule in the system — you can hold any screen against it and get a yes or no. That is what stops an ornamental stance drifting into decoration across a hundred screens, and it is also a review checklist I can be held to.</p>
+  <p class="note" style="margin-top:12px"><b>Why it matters to the build, not just the look.</b> It is the one falsifiable rule in the system — you can hold any screen against it and get a yes or no. That is what stops an ornamental stance drifting into decoration across a hundred screens, and it doubles as a review checklist.</p>
 </section>
 
 <!-- ============================================================ M1 -->
@@ -531,12 +530,12 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
           <div class="drow">
             <span class="mark off"></span>
             <div style="min-width:0">
-              <div class="dnm" style="color:var(--ink-500)">Studio Mac</div>
+              <div class="dnm" style="color:var(--ink-500)">Mac Studio</div>
               <div class="daddr">last seen 192.168.1.9 · 2d ago</div>
             </div>
             <div class="dmeta"><span class="badge off">Unreachable</span></div>
           </div>
-          <div class="note" style="font-size:12px;padding:9px 11px">Ìbejì v1 pairs exactly two devices. <b>Studio Mac</b> is remembered but not paired.</div>
+          <div class="note" style="font-size:12px;padding:9px 11px">Ìbejì v1 pairs exactly two devices. <b>Mac Studio</b> is remembered but not paired.</div>
           <div style="display:flex;gap:7px"><span class="btn sec xs">Add by IP</span><span class="btn dstr xs">Unpair Desktop</span></div>
         </div>
       </div>
@@ -549,7 +548,7 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
     <thead><tr><th style="width:26%">Piece</th><th style="width:10%">Kind</th><th>Detail</th></tr></thead>
     <tbody>
       <tr><td><b>Identity &amp; keystore</b></td><td><span class="tag new">new</span></td><td>Ed25519 keypair per device, generated on first daemon run, private key in the macOS keychain. Peer public keys pinned on pairing. A <b>key mismatch hard-fails</b> with a re-pair prompt and never auto-trusts — one of the four places oxblood is spent.</td></tr>
-      <tr><td><b>mDNS discovery</b></td><td><span class="tag new">new</span></td><td>Advertise and browse <code>_ibeji._tcp.local</code>, carrying device name, identity fingerprint and API version. Manual add by IP for networks with multicast blocked — common on corporate Wi-Fi, so not an edge case.</td></tr>
+      <tr><td><b>mDNS discovery</b></td><td><span class="tag new">new</span></td><td>Advertise and browse <code>_ibeji._tcp.local</code>, carrying device name, identity fingerprint and API version. Manual add by IP for networks with multicast blocked — common on shared and guest Wi-Fi, so not an edge case.</td></tr>
       <tr><td><b>Pairing handshake</b></td><td><span class="tag new">new</span></td><td>Short-authenticated-string over an ephemeral key exchange: the six digits are derived from both public keys, so a matching code proves both sides see the same keys. Confirm on both machines, then pin.</td></tr>
       <tr><td><b>The link</b></td><td><span class="tag new">new</span></td><td>Mutual-key TLS to the pinned identity, one connection, multiplexed streams. Automatic reconnect with backoff across sleep, wake and IP change. Every later module is a stream on this.</td></tr>
       <tr><td><b>LaunchAgent install</b></td><td><span class="tag risk">careful</span></td><td>A plist in <code>~/Library/LaunchAgents</code>, <code>RunAtLoad</code>, <code>KeepAlive</code>. <b>Never a root LaunchDaemon.</b> Written at install, verified at app start, repaired if missing.</td></tr>
@@ -560,7 +559,7 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
 
   <h3 class="k">Where it gets hard</h3>
   <div class="cols">
-    <div class="note att"><b>mDNS is blocked more than you expect.</b> Corporate and guest Wi-Fi often disable multicast between clients. Manual add by IP is therefore a first-class path, not a fallback — and the empty state on the discovery list has to say "multicast may be blocked on this network; add Desktop by IP" rather than just sitting empty.</div>
+    <div class="note att"><b>mDNS is blocked more than you expect.</b> Shared and guest Wi-Fi often disable multicast between clients. Manual add by IP is therefore a first-class path, not a fallback — and the empty state on the discovery list has to say "multicast may be blocked on this network; add Desktop by IP" rather than just sitting empty.</div>
     <div class="note att"><b>The IP changes under you.</b> DHCP renews, Wi-Fi flips to Ethernet, the machine sleeps. Identity is the pinned key, never the address: the device row shows the current IP as information, and the link re-resolves through mDNS or the last known address on every reconnect.</div>
     <div class="note blood"><b>A reinstall looks exactly like an impersonation.</b> Same name, same IP, new key. The product cannot tell these apart, so it must not guess — it hard-fails and shows both fingerprints side by side with typed confirmation. Annoying on a genuine reinstall, correct every other time.</div>
   </div>
@@ -619,17 +618,17 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
 <span class="ok">hi</span>
 
 <span class="pmt">laptop ~ %</span> <span class="cm">ibeji ls desktop:~/projects</span>
-<span class="ou">drwxr-xr-x   medcord/</span>
-<span class="ou">drwxr-xr-x   solon/</span>
+<span class="ou">drwxr-xr-x   atlas/</span>
+<span class="ou">drwxr-xr-x   harbor/</span>
 <span class="ou">-rw-r--r--   notes.md      2.1 KB</span>
 
-<span class="pmt">laptop ~ %</span> <span class="cm">ibeji grep desktop:~/projects/medcord "TODO" --glob "*.ts"</span>
+<span class="pmt">laptop ~ %</span> <span class="cm">ibeji grep desktop:~/projects/atlas "TODO" --glob "*.ts"</span>
 <span class="ou">src/sync/queue.ts:84:  // TODO: backoff on repeated 429</span>
 <span class="ou">src/api/ports.ts:19:   // TODO: cache the process lookup</span>
 <span class="dim">2 matches in 0.31s · 412 files scanned</span>
 
-<span class="pmt">laptop ~ %</span> <span class="cm">ibeji run desktop --cwd ~/projects/medcord -- npm test</span>
-<span class="ou">&gt; medcord@0.4.1 test</span>
+<span class="pmt">laptop ~ %</span> <span class="cm">ibeji run desktop --cwd ~/projects/atlas -- npm test</span>
+<span class="ou">&gt; atlas@0.4.1 test</span>
 <span class="ou">&gt; vitest run</span>
 <span class="ok">  ✓ 148 passed</span>
 <span class="dim">exit 0 · 14.2s · on Desktop</span>
@@ -647,7 +646,7 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
       <tr><td><b>Read calls</b></td><td><span class="tag new">new</span></td><td><code>list</code>, <code>stat</code>, <code>read</code>, and <b>search</b>. Search is the one that matters: an agent exploring a repo one <code>read_file</code> at a time is unusable; one grep replaces fifty reads.</td></tr>
       <tr><td><b>Exec</b></td><td><span class="tag risk">careful</span></td><td>Runs in the <b>user's login shell</b> — <code>zsh -lc</code> — as the logged-in user, no privilege escalation. Without the login shell, PATH misses nvm, pnpm and homebrew, and git cannot find its credential helper, and every first run fails mysteriously.</td></tr>
       <tr><td><b>The CLI</b></td><td><span class="tag new">new</span></td><td><code>devices</code>, <code>ls</code>, <code>cat</code>, <code>grep</code>, <code>run</code>. A thin client: it holds no logic the API does not have. Registered on PATH at install.</td></tr>
-      <tr><td><b>Device info &amp; probe</b></td><td><span class="tag new">new</span></td><td><code>device_info</code> for agents sizing up the far machine, and <code>ibeji check desktop https://gitlab.com</code> — "can <i>that</i> machine reach it, and with what status". Diagnosing whose network is the problem is a daily task this answers in one call.</td></tr>
+      <tr><td><b>Device info &amp; probe</b></td><td><span class="tag new">new</span></td><td><code>device_info</code> for agents sizing up the far machine, and <code>ibeji check desktop https://git.example.com</code> — "can <i>that</i> machine reach it, and with what status". Diagnosing whose network is the problem is a daily task this answers in one call.</td></tr>
     </tbody>
   </table></div>
 
@@ -660,7 +659,7 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
   <p class="sub">Two modes per direction, a prompt that names the asker and the exact effect, and the rule that makes Prompt mode livable: <i>always allow this exact command in this directory from this device</i>.</p>
 
   <div class="prose" style="margin-bottom:4px">
-    <p><b>The thing this module is really for.</b> Bypass is right between two machines you own and sit at. Prompt is right for a corporate-managed machine. Neither is usable for agent work on its own: Bypass gives an agent your whole machine, and Prompt asks you to approve every <code>git push</code> forever. <b>Remembered rules are the third answer</b> — approve <code>git push</code> in <i>this one repo</i> from <i>this one device</i>, once, and it never asks again while everything else still asks.</p>
+    <p><b>The thing this module is really for.</b> Bypass is right between two machines you own and sit at. Prompt is right for the machine that holds anything you would rather approve by hand. Neither is usable for agent work on its own: Bypass gives an agent your whole machine, and Prompt asks you to approve every <code>git push</code> forever. <b>Remembered rules are the third answer</b> — approve <code>git push</code> in <i>this one repo</i> from <i>this one device</i>, once, and it never asks again while everything else still asks.</p>
   </div>
 
   <h3 class="k">What happens to an incoming action</h3>
@@ -683,7 +682,7 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
           <div class="pr">
             <div class="asker">Laptop wants to run a command<span class="slot">Asker · required</span></div>
             <div class="eff"><code>git push origin feature/sync-barrier</code><span class="slot">Effect · required</span></div>
-            <div class="scope">in ~/projects/medcord · as feranmi · via MCP (Claude Code)</div>
+            <div class="scope">in ~/projects/atlas · as dev · via MCP (Claude Code)</div>
             <div class="acts">
               <span class="btn">Accept</span>
               <span class="btn sec">Decline</span>
@@ -706,9 +705,9 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
           <div class="ovl">Remembered rules · 3</div>
           <div class="recd">
             <div class="rr hd"><span class="what">Command · directory</span><span class="vd">Fired</span></div>
-            <div class="rr"><span class="what">git push · ~/projects/medcord</span><span class="vd ok">41×</span></div>
-            <div class="rr"><span class="what">npm test · ~/projects/medcord</span><span class="vd ok">18×</span></div>
-            <div class="rr"><span class="what">git pull --ff-only · ~/projects/solon</span><span class="vd ok">6×</span></div>
+            <div class="rr"><span class="what">git push · ~/projects/atlas</span><span class="vd ok">41×</span></div>
+            <div class="rr"><span class="what">npm test · ~/projects/atlas</span><span class="vd ok">18×</span></div>
+            <div class="rr"><span class="what">git pull --ff-only · ~/projects/harbor</span><span class="vd ok">6×</span></div>
           </div>
           <div class="ovl" style="margin-top:4px">Activity · today</div>
           <div class="recd">
@@ -753,7 +752,7 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
 
   <div class="prose" style="margin-bottom:4px">
     <p><b>Not a network mount.</b> The replica holds real files on real disk — so your editor, your language server and your file watcher all behave normally, and the folder works when the peer is asleep. The cost is convergence: two real copies can diverge, which is why the conflict rule is decided up front rather than discovered.</p>
-    <p><b>Master-wins is not a cop-out, it is the correct outcome for the main use case.</b> The master is the machine that owns the git credentials and the corporate access. A <code>git pull</code> on the master <i>should</i> beat an unsynced local edit on the replica — and the replica's edit is never lost, it is preserved beside it and surfaced.</p>
+    <p><b>Master-wins is not a cop-out, it is the correct outcome for the main use case.</b> The master is the machine that owns the git credentials. A <code>git pull</code> on the master <i>should</i> beat an unsynced local edit on the replica — and the replica's edit is never lost, it is preserved beside it and surfaced.</p>
   </div>
 
   <h3 class="k">How a space is created and how it runs</h3>
@@ -772,12 +771,12 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
   <div class="frames">
     <div class="dev">
       <div class="win lg contour">
-        <div class="tb"><i></i><i></i><i></i><span class="ttl">Ìbejì — space “medcord”</span><span class="rt">⌘3</span></div>
+        <div class="tb"><i></i><i></i><i></i><span class="ttl">Ìbejì — space “atlas”</span><span class="rt">⌘3</span></div>
         <div class="wb">
           <div class="terr" style="display:flex;align-items:center;gap:13px">
             <div style="min-width:0">
-              <div style="font-family:var(--territory);font-size:19px;color:var(--ink-900);line-height:1.2">medcord</div>
-              <div style="font-family:var(--record);font-size:10.5px;color:var(--ink-500)">Desktop:~/projects/medcord → Laptop:~/projects/medcord</div>
+              <div style="font-family:var(--territory);font-size:19px;color:var(--ink-900);line-height:1.2">atlas</div>
+              <div style="font-family:var(--record);font-size:10.5px;color:var(--ink-500)">Desktop:~/projects/atlas → Laptop:~/projects/atlas</div>
             </div>
             <div style="margin-left:auto;display:flex;align-items:center;gap:7px;flex:none">
               <span class="badge att"><span class="dt"></span>Conflict</span>
@@ -812,12 +811,12 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
         <div class="tb"><i></i><i></i><i></i><span class="ttl">New space</span></div>
         <div class="wb">
           <div class="ovl">Folder</div>
-          <div style="font-family:var(--record);font-size:11.5px;background:var(--paper-50);border:1px solid var(--paper-500);border-radius:var(--r-md);padding:8px 10px;color:var(--ink-800)">~/projects/medcord</div>
+          <div style="font-family:var(--record);font-size:11.5px;background:var(--paper-50);border:1px solid var(--paper-500);border-radius:var(--r-md);padding:8px 10px;color:var(--ink-800)">~/projects/atlas</div>
           <div class="ovl" style="margin-top:3px">Master</div>
           <div style="display:flex;gap:6px">
             <span class="btn xs">Desktop</span><span class="btn sec xs">Laptop</span>
           </div>
-          <div class="note live" style="font-size:12px;padding:9px 11px">This looks like a <b>git repository</b>. Make <b>Desktop</b> the master — it owns the credentials and the VPN, so a <code>git pull</code> there correctly beats an unsynced edit here.</div>
+          <div class="note live" style="font-size:12px;padding:9px 11px">This looks like a <b>git repository</b>. Make <b>Desktop</b> the master — it owns the credentials, so a <code>git pull</code> there correctly beats an unsynced edit here.</div>
           <div class="ovl" style="margin-top:3px">Ignored</div>
           <div class="recd">
             <div class="rr"><span class="what">.git/</span><span class="vd" style="color:var(--attention)">strong</span></div>
@@ -850,7 +849,7 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
 
   <h3 class="k">Where it gets hard</h3>
   <div class="cols">
-    <div class="note blood"><b>This is the module that can lose your work.</b> Everything else in Ìbejì is additive — a failed tunnel or a declined command costs you nothing. A sync bug overwrites files. So: atomic renames everywhere, never delete without a conflict copy, and a <b>dry-run mode</b> during development that logs what it would do without touching disk. I would rather ship this module late than ship it fast.</div>
+    <div class="note blood"><b>This is the module that can lose your work.</b> Everything else in Ìbejì is additive — a failed tunnel or a declined command costs you nothing. A sync bug overwrites files. So: atomic renames everywhere, never delete without a conflict copy, and a <b>dry-run mode</b> during development that logs what it would do without touching disk. Better to ship this module late than to ship it fast.</div>
     <div class="note att"><b>Ignore patterns are load-bearing for performance, not just tidiness.</b> A repo with <code>node_modules</code> unignored is 40,000 files and a watcher storm. The defaults are pre-filled for that reason, and the space creation screen shows the file count before you commit.</div>
     <div class="note att"><b>Deletes are the ambiguous case.</b> A file gone on the replica is either "I deleted it" or "it never arrived". v1 treats a replica-side delete as a change to push, and a master-side delete as authoritative — with deletes listed in the feed so a surprising one is visible. Tombstones with timestamps, not absence-as-signal.</div>
   </div>
@@ -871,22 +870,22 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
     <div class="dev" style="max-width:none">
       <div class="term">
 <span class="dim"># without the barrier — the race, in the wild</span>
-<span class="pmt">laptop ~ %</span> <span class="cm">ibeji run desktop --cwd ~/p/medcord -- git commit -am "fix"</span>
+<span class="pmt">laptop ~ %</span> <span class="cm">ibeji run desktop --cwd ~/p/atlas -- git commit -am "fix"</span>
 <span class="ou">[main 8f2a1c] fix</span>
 <span class="wn"> 2 files changed</span>   <span class="dim">← should have been 3</span>
 
 <span class="dim"># with it</span>
-<span class="pmt">laptop ~ %</span> <span class="cm">ibeji run desktop --after-sync medcord \</span>
-<span class="cm">            --cwd ~/p/medcord -- git commit -am "fix"</span>
-<span class="dim">waiting for space “medcord” …</span>
+<span class="pmt">laptop ~ %</span> <span class="cm">ibeji run desktop --after-sync atlas \</span>
+<span class="cm">            --cwd ~/p/atlas -- git commit -am "fix"</span>
+<span class="dim">waiting for space “atlas” …</span>
 <span class="ok">in-sync</span> <span class="dim">· 0.8s · 3 files landed</span>
 <span class="ou">[main 8f2a1c] fix</span>
 <span class="ok"> 3 files changed, 48 insertions(+)</span>
 <span class="dim">exit 0</span>
 
 <span class="dim"># and when it can't converge, it says so</span>
-<span class="pmt">laptop ~ %</span> <span class="cm">ibeji run desktop --after-sync medcord -- git push</span>
-<span class="er">error: space “medcord” has an unresolved conflict</span>
+<span class="pmt">laptop ~ %</span> <span class="cm">ibeji run desktop --after-sync atlas -- git push</span>
+<span class="er">error: space “atlas” has an unresolved conflict</span>
 <span class="er">       docs/schema.md · resolve it, then retry</span>
 <span class="dim">exit 75</span>
       </div>
@@ -902,15 +901,15 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
           <div class="ovl">Started by Ìbejì · 2 running</div>
           <div class="recd">
             <div class="rr hd"><span class="ts">ID</span><span class="what">Command · directory</span><span class="vd">State</span></div>
-            <div class="rr"><span class="ts">p-7a4</span><span class="what">npm run dev · ~/p/medcord</span><span class="vd ok">running 42m</span></div>
-            <div class="rr"><span class="ts">p-9c1</span><span class="what">tsc --watch · ~/p/solon</span><span class="vd ok">running 11m</span></div>
-            <div class="rr"><span class="ts">p-612</span><span class="what">npm test · ~/p/medcord</span><span class="vd" style="color:var(--ink-400)">exited 0 · 14:02</span></div>
+            <div class="rr"><span class="ts">p-7a4</span><span class="what">npm run dev · ~/p/atlas</span><span class="vd ok">running 42m</span></div>
+            <div class="rr"><span class="ts">p-9c1</span><span class="what">tsc --watch · ~/p/harbor</span><span class="vd ok">running 11m</span></div>
+            <div class="rr"><span class="ts">p-612</span><span class="what">npm test · ~/p/atlas</span><span class="vd" style="color:var(--ink-400)">exited 0 · 14:02</span></div>
           </div>
           <div style="display:flex;gap:6px"><span class="btn sec xs">Attach to p-7a4</span><span class="btn dstr xs">Kill p-7a4</span></div>
           <div class="note" style="font-size:12px;padding:9px 11px"><b>Attach</b> replays the last 200 lines, then streams live. Detaching leaves the process running.</div>
         </div>
       </div>
-      <p class="cap"><b>The process table.</b> <span class="tag new">no specimen yet</span> — this is one of the two components this plan asks to add. Pure record register, which makes it a near-clone of the activity row with a state column. A dev server you started from the other machine must be stoppable without walking over to it.</p>
+      <p class="cap"><b>The process table.</b> <span class="tag new">no specimen yet</span> — one of the two components this plan adds. Pure record register, which makes it a near-clone of the activity row with a state column. A dev server you started from the other machine must be stoppable without walking over to it.</p>
     </div>
     <div class="dev">
       <div class="win sm">
@@ -918,11 +917,11 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
         <div class="wb">
           <div style="font-family:var(--record);font-size:11.5px;background:var(--paper-50);border:1px solid var(--sea-300);border-radius:var(--r-md);padding:8px 10px;color:var(--ink-500)">medc▌</div>
           <div class="recd">
-            <div class="rr" style="background:var(--sea-50)"><span class="what" style="font-family:var(--territory);font-size:13.5px">Medcord tests</span><span class="vd rule">Desktop</span></div>
-            <div class="rr"><span class="what" style="font-family:var(--territory);font-size:13.5px">Medcord dev server</span><span class="vd rule">Desktop · detached</span></div>
-            <div class="rr"><span class="what" style="font-family:var(--territory);font-size:13.5px">Medcord push</span><span class="vd rule">Desktop · after-sync</span></div>
+            <div class="rr" style="background:var(--sea-50)"><span class="what" style="font-family:var(--territory);font-size:13.5px">Atlas tests</span><span class="vd rule">Desktop</span></div>
+            <div class="rr"><span class="what" style="font-family:var(--territory);font-size:13.5px">Atlas dev server</span><span class="vd rule">Desktop · detached</span></div>
+            <div class="rr"><span class="what" style="font-family:var(--territory);font-size:13.5px">Atlas push</span><span class="vd rule">Desktop · after-sync</span></div>
           </div>
-          <div class="ovl" style="margin-top:3px">Last run · Medcord tests</div>
+          <div class="ovl" style="margin-top:3px">Last run · Atlas tests</div>
           <div class="term" style="font-size:10.5px;line-height:1.6">
 <span class="ok">  ✓ 148 passed</span>
 <span class="dim">exit 0 · 14.2s · 2h ago</span>
@@ -956,7 +955,7 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
 
   <div class="prose" style="margin-bottom:4px">
     <p><b>What makes it feel like magic.</b> A dev server bound to <code>127.0.0.1:3000</code> on Desktop is, by design, unreachable from Laptop — that is what loopback means. Port Lens makes it reachable <i>without changing the bind address, touching the firewall, or typing an IP</i>: Laptop's daemon listens on <code>localhost:3000</code> and forwards over the LAN to Desktop's daemon, which connects to its own loopback internally. From Laptop's point of view, Desktop's dev server <i>is</i> local.</p>
-    <p><b>Why tunnels never prompt.</b> Opening a tunnel is a read, not a side effect — the remote user already exposed the mesh by pairing. But it <i>is</i> logged, with the connecting process name where knowable, because the log is the accountability story on a managed machine.</p>
+    <p><b>Why tunnels never prompt.</b> Opening a tunnel is a read, not a side effect — the remote user already exposed the mesh by pairing. But it <i>is</i> logged, with the connecting process name where knowable, because the log is the accountability story on the machine that holds the credentials.</p>
   </div>
 
   <h3 class="k">The screen</h3>
@@ -999,7 +998,7 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
             </div>
             <div class="prow">
               <span class="pnum">4000</span>
-              <div style="min-width:0"><div class="psvc">Medcord API</div><div class="pproc">pinned · auto-reconnects</div></div>
+              <div style="min-width:0"><div class="psvc">Atlas API</div><div class="pproc">pinned · auto-reconnects</div></div>
               <div class="pdev">
                 <span class="route"><span class="ln"></span>localhost:4000</span>
                 <span class="badge conv"><span class="dt"></span>Pinned</span>
@@ -1046,7 +1045,7 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
         <p><b>No store-and-forward.</b> If the peer is offline the send <b>fails visibly</b>. This is a LAN product: a queue that silently holds your file until tomorrow is worse than an error today, because you act on the belief it arrived.</p>
         <p><b>Clipboard sync is off by default and visibly indicated while on.</b> Text and images, propagating within a second. <b>Clipboard contents are never written to any log or history</b> — not the activity log, not a debug file. The one piece of state in this product that is deliberately unobservable.</p>
       </div>
-      <div class="note blood" style="margin-top:12px"><b>Why clipboard sync defaults to off.</b> A shared clipboard carries passwords, tokens and whatever you last copied out of a password manager. Having it on by default would mean every copy on a corporate machine crosses to an unmanaged one without you deciding. On, with an indicator, when you want it.</div>
+      <div class="note blood" style="margin-top:12px"><b>Why clipboard sync defaults to off.</b> A shared clipboard carries passwords, tokens and whatever you last copied out of a password manager. Having it on by default would mean every copy on one machine crosses to the other without you deciding. On, with an indicator, when you want it.</div>
     </div>
     <div class="dev" style="max-width:none">
       <div class="win sm">
@@ -1077,12 +1076,12 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
 <!-- ============================================================ M7 -->
 <section class="sheet" id="m7">
   <div class="sh"><span class="mod">M7</span><h2>Handoff</h2><span class="sz">Small</span></div>
-  <p class="sub">Send a URL to the other machine's browser, launch an app there, and mirror Ìbejì's own notifications across. The module that quietly solves the SSO problem.</p>
+  <p class="sub">Send a URL to the other machine's browser, launch an app there, and mirror Ìbejì's own notifications across. The module that quietly solves browser-bound sign-ins.</p>
 
   <div class="cols wide">
     <div class="prose">
-      <p><b>Browser handoff is the escape hatch that matters.</b> When a SAML or SSO session lapses on the machine that owns it, you hand the sign-in URL across and click through there — on the machine whose browser profile, VPN and posture the identity provider already trusts. That is the whole fix, and it is three lines of code sitting on top of M1 and M2.</p>
-      <p><b>App launch</b> opens an application on the peer, optionally with a file or folder argument — "open VS Code on Desktop at the medcord space folder". Because sync makes the folder equivalent on both machines, pointing an editor at it there is the same as pointing it here.</p>
+      <p><b>Browser handoff is the escape hatch that matters.</b> Plenty of sign-ins are bound to one machine — to a browser profile, a client certificate, a hardware key in that machine's USB port. When such a session lapses, you hand the sign-in URL across and click through on the machine the other end already recognises. That is the whole fix, and it is three lines of code sitting on top of M1 and M2.</p>
+      <p><b>App launch</b> opens an application on the peer, optionally with a file or folder argument — "open VS Code on Desktop at the atlas space folder". Because sync makes the folder equivalent on both machines, pointing an editor at it there is the same as pointing it here.</p>
       <p><b>Handoff, not teleport.</b> Moving a running app between machines is defined as <i>relaunching the same app on the target, pointed at the same context</i>. No live window migration in v1, and the word "handoff" is chosen to promise exactly that much.</p>
       <p><b>Notifications</b> mirror Ìbejì's own events — sync conflict, command finished, incoming prompt, inbox arrival — as toasts on the peer, with a per-pair toggle. Mirroring <i>other apps'</i> notifications is deferred: on macOS it is a permissions tar pit that would dominate the module.</p>
     </div>
@@ -1091,17 +1090,17 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
         <div class="tb"><i></i><i></i><i></i><span class="ttl">Hand off to Desktop</span></div>
         <div class="wb">
           <div class="ovl">Open in Desktop's browser</div>
-          <div style="font-family:var(--record);font-size:11px;background:var(--paper-50);border:1px solid var(--paper-500);border-radius:var(--r-md);padding:8px 10px;color:var(--ink-800);word-break:break-all">https://gitlab.com/users/auth/saml?redirect=…</div>
+          <div style="font-family:var(--record);font-size:11px;background:var(--paper-50);border:1px solid var(--paper-500);border-radius:var(--r-md);padding:8px 10px;color:var(--ink-800);word-break:break-all">https://git.example.com/sign-in?redirect=…</div>
           <span class="btn full">Open there</span>
-          <div class="note live" style="font-size:12px;padding:9px 11px">Desktop owns the SSO session and the VPN. Signing in there refreshes the session the <code>git push</code> rule depends on.</div>
+          <div class="note live" style="font-size:12px;padding:9px 11px">Desktop owns this sign-in session. Refreshing it there renews what the <code>git push</code> rule depends on.</div>
           <div class="ovl" style="margin-top:4px">Recent handoffs</div>
           <div class="recd">
-            <div class="rr"><span class="ts">14:31</span><span class="what">gitlab.com/users/auth/saml</span><span class="vd ok">opened</span></div>
-            <div class="rr"><span class="ts">09:12</span><span class="what">code ~/projects/medcord</span><span class="vd rule">rule</span></div>
+            <div class="rr"><span class="ts">14:31</span><span class="what">git.example.com/sign-in</span><span class="vd ok">opened</span></div>
+            <div class="rr"><span class="ts">09:12</span><span class="what">code ~/projects/atlas</span><span class="vd rule">rule</span></div>
           </div>
         </div>
       </div>
-      <p class="cap" style="margin-top:9px"><b>The SSO escape hatch</b> — <code>84-modal</code> plus the activity row. Everything here is a side effect, so it obeys Prompt/Bypass and remembered rules like anything else; "open a browser on Desktop" is a rule you will approve once and never think about again.</p>
+      <p class="cap" style="margin-top:9px"><b>The sign-in escape hatch</b> — <code>84-modal</code> plus the activity row. Everything here is a side effect, so it obeys Prompt/Bypass and remembered rules like anything else; "open a browser on Desktop" is a rule you will approve once and never think about again.</p>
     </div>
   </div>
 </section>
@@ -1122,7 +1121,7 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
         <div class="wb">
           <div style="font-family:var(--record);font-size:11.5px;line-height:1.7;background:var(--paper-50);border:1px solid var(--paper-500);border-radius:var(--r-md);padding:11px 12px;color:var(--ink-800)">
 <span style="color:var(--ink-400)">## tuesday</span><br>
-- medcord: barrier before every push<br>
+- atlas: barrier before every push<br>
 - check <span style="color:var(--sea-700)">p-7a4</span> still running after wake<br>
 - ask about the 60s expiry on long builds▌
           </div>
@@ -1160,13 +1159,13 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
       <div class="term">
 <span class="pmt">laptop ~ %</span> <span class="cm">ibeji trace --follow --device desktop</span>
 <span class="dim">14:24:02.118  exec.request      desktop  </span><span class="pv">mcp</span>
-<span class="dim">  cwd  </span><span class="ou">~/projects/medcord</span>
+<span class="dim">  cwd  </span><span class="ou">~/projects/atlas</span>
 <span class="dim">  cmd  </span><span class="ou">git push origin feature/sync-barrier</span>
-<span class="dim">  after_sync  </span><span class="ou">medcord</span>
-<span class="dim">14:24:02.119  sync.barrier.wait  medcord  </span><span class="wn">syncing</span>
-<span class="dim">14:24:02.934  sync.barrier.ok    medcord  </span><span class="ok">in-sync</span><span class="dim">  815ms  3 files</span>
+<span class="dim">  after_sync  </span><span class="ou">atlas</span>
+<span class="dim">14:24:02.119  sync.barrier.wait  atlas  </span><span class="wn">syncing</span>
+<span class="dim">14:24:02.934  sync.barrier.ok    atlas  </span><span class="ok">in-sync</span><span class="dim">  815ms  3 files</span>
 <span class="dim">14:24:02.936  perm.check        desktop  </span><span class="ok">rule-matched</span>
-<span class="dim">  rule  </span><span class="ou">git push · ~/projects/medcord · laptop</span>
+<span class="dim">  rule  </span><span class="ou">git push · ~/projects/atlas · laptop</span>
 <span class="dim">14:24:03.002  exec.start        desktop  pid 51204  zsh -lc</span>
 <span class="dim">14:24:05.771  exec.exit         desktop  </span><span class="ok">0</span><span class="dim">  2.77s</span>
 <span class="dim">  stdout  </span><span class="ou">142 bytes</span>
@@ -1198,10 +1197,10 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
           <div class="recd">
             <div class="rr hd"><span class="ts">Time</span><span class="who">Event</span><span class="what">Detail</span><span class="vd">Result</span></div>
             <div class="rr"><span class="ts">14:24:05</span><span class="who">exec.exit</span><span class="what">git push origin feature/sync-barrier</span><span class="vd ok">0 · 2.77s</span></div>
-            <div class="rr"><span class="ts">14:24:02</span><span class="who">perm.check</span><span class="what">rule: git push · ~/projects/medcord</span><span class="vd rule">matched</span></div>
-            <div class="rr"><span class="ts">14:24:02</span><span class="who">sync.barrier</span><span class="what">medcord · 3 files landed</span><span class="vd ok">815ms</span></div>
+            <div class="rr"><span class="ts">14:24:02</span><span class="who">perm.check</span><span class="what">rule: git push · ~/projects/atlas</span><span class="vd rule">matched</span></div>
+            <div class="rr"><span class="ts">14:24:02</span><span class="who">sync.barrier</span><span class="what">atlas · 3 files landed</span><span class="vd ok">815ms</span></div>
             <div class="rr" style="background:var(--attention-soft)"><span class="ts" style="color:var(--attention-on)">14:20:41</span><span class="who" style="color:var(--attention-on)">perm.expired</span><span class="what" style="color:var(--attention-on)">npm run deploy · window was closed</span><span class="vd exp">timed_out</span></div>
-            <div class="rr"><span class="ts">14:19:41</span><span class="who">exec.request</span><span class="what">npm run deploy · ~/projects/medcord</span><span class="vd prov" style="color:var(--provenance)">mcp</span></div>
+            <div class="rr"><span class="ts">14:19:41</span><span class="who">exec.request</span><span class="what">npm run deploy · ~/projects/atlas</span><span class="vd prov" style="color:var(--provenance)">mcp</span></div>
             <div class="rr"><span class="ts">14:02:11</span><span class="who">fs.search</span><span class="what">grep "TODO" · 412 files · 2 hits</span><span class="vd ok">310ms</span></div>
           </div>
           <div style="display:flex;align-items:center;gap:9px;font-family:var(--record);font-size:10px;color:var(--ink-400);padding-top:3px">
@@ -1226,7 +1225,7 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
 <span class="dim">             zsh -lc PATH is missing ~/.local/share/pnpm</span>
 <span class="dim">             fix: add it to ~/.zprofile, not ~/.zshrc —</span>
 <span class="dim">             a login shell does not read ~/.zshrc</span>
-<span class="wn">!</span> <span class="ou">Spaces       medcord has 1 unresolved conflict</span>
+<span class="wn">!</span> <span class="ou">Spaces       atlas has 1 unresolved conflict</span>
 
 <span class="dim">1 failed · 1 warning · 5 passed</span>
           </div>
@@ -1379,7 +1378,7 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
         <b>Milestone 2 — the lever</b>
         <div class="mt">M6a + M2 + M9 (trace) · the API, exec, permissions, rules, CLI, tracing</div>
         <p>The local HTTP API; list, read, search, write and exec against the peer; the login-shell execution environment; the permission engine with Prompt and Bypass, the two-slot prompt, 60-second expiry, remembered rules and the activity log; the <code>ibeji</code> CLI. <b>The trace goes in with the API, not after it</b> — written into the request path from the first call, so no endpoint is ever untraced. <b>This is the milestone that retires the "git must run on the other machine" problem</b>, and it does so before a single byte of sync code exists.</p>
-        <div class="dm"><b>Done means</b> <code>ibeji run desktop --cwd ~/projects/medcord -- git push</code> from your Laptop pushes with Desktop's credentials on Desktop's VPN, approved once as a remembered rule, logged on both machines, exiting with the remote exit code. <code>ibeji check desktop https://gitlab.com</code> tells you whose network is broken, and <code>ibeji trace --errors</code> explains any failure above without you reading a log file.</div>
+        <div class="dm"><b>Done means</b> <code>ibeji run desktop --cwd ~/projects/atlas -- git push</code> from your Laptop pushes with Desktop's credentials, approved once as a remembered rule, logged on both machines, exiting with the remote exit code. <code>ibeji check desktop https://git.example.com</code> tells you whose network is broken, and <code>ibeji trace --errors</code> explains any failure above without you reading a log file.</div>
       </div>
     </div>
     <div class="ms">
@@ -1388,7 +1387,7 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
         <b>Milestone 3 — one territory</b>
         <div class="mt">M4 + M6b + M9 (help) · spaces, barrier, processes, saved commands, MCP</div>
         <p>Spaces with watchers, ignore defaults, master-wins conflicts, promote and discard, mirror mode, re-convergence and the state machine. Then the sync barrier on top of it, detached processes with <code>ps</code>/<code>attach</code>/<code>kill</code>, saved commands, and the MCP server last — with <code>ibeji help --json</code> generated from the same source as its tool descriptions. Sync gets the longest schedule and the torture tests, because it is the one module that can lose work.</p>
-        <div class="dm"><b>Done means</b> You edit on Laptop, Claude Code calls <code>run_remote_command("git push", after_sync: "medcord")</code>, the barrier waits for your last save to land, the rule lets it run, and the push goes out — with the agent's action visibly violet in both logs.</div>
+        <div class="dm"><b>Done means</b> You edit on Laptop, Claude Code calls <code>run_remote_command("git push", after_sync: "atlas")</code>, the barrier waits for your last save to land, the rule lets it run, and the push goes out — with the agent's action visibly violet in both logs.</div>
       </div>
     </div>
     <div class="ms">
@@ -1397,7 +1396,7 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
         <b>Milestone 4 — the rest</b>
         <div class="mt">M5 · M3 · M7 · M8 + the trace pane · ports, drop, handoff, scratchpad</div>
         <p>Port Lens with tunnels, auto-remap, pinning and open-in-browser. File drop to the inbox and clipboard sync. Browser and app handoff, notification mirroring. The scratchpad. The Trace pane in the app. Each is small and mostly sits on machinery that already exists — which is exactly why they come last rather than first, despite Port Lens being the most demo-able surface in the product. <b>This milestone is not optional polish; it is where the product is finished.</b></p>
-        <div class="dm"><b>Done means</b> You click Desktop:3000 and <code>localhost:3000</code> on Laptop serves Desktop's dev server; a pinned tunnel comes back by itself after a lid close; the SSO sign-in URL opens in Desktop's browser; and every one of the nine modules is built, tested on your real machines, and in daily use.</div>
+        <div class="dm"><b>Done means</b> You click Desktop:3000 and <code>localhost:3000</code> on Laptop serves Desktop's dev server; a pinned tunnel comes back by itself after a lid close; a sign-in URL opens in Desktop's browser; and every one of the nine modules is built, tested on real machines, and in daily use.</div>
       </div>
     </div>
   </div>
@@ -1413,7 +1412,7 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
     <thead><tr><th style="width:24%">Gap</th><th style="width:11%">Kind</th><th>What and why</th></tr></thead>
     <tbody>
       <tr><td><b>Process row</b></td><td><span class="tag chg">build here</span></td><td>M6b's <code>ibeji ps</code> / <code>attach</code> / <code>kill</code> has no specimen. Built as an app component: record register, the activity row plus a state column and a live-output attach state. It inherits an existing shape rather than inventing one, which is why not gallerying it is safe.</td></tr>
-      <tr><td><b>Probe result row</b></td><td><span class="tag chg">build here</span></td><td><code>ibeji check desktop https://gitlab.com</code>, central to the VPN story — which machine probed, the target, the status code, the latency, and a failure that names the reason. Also a record row; also built here.</td></tr>
+      <tr><td><b>Probe result row</b></td><td><span class="tag chg">build here</span></td><td><code>ibeji check desktop https://git.example.com</code>, central to the whose-network-is-broken story — which machine probed, the target, the status code, the latency, and a failure that names the reason. Also a record row; also built here.</td></tr>
       <tr><td><b>Trace pane</b></td><td><span class="tag chg">build here</span></td><td>M9's app surface. The activity row with two more columns, plus filters by event class and provenance. Built in milestone 4.</td></tr>
       <tr><td><b>README drift</b></td><td><span class="tag chg">fix</span></td><td>The design-system README still says "two <b>or more</b> of your own computers into a trusted mesh" and lists <b>chat</b> — both pre-date the PRD's cut to exactly two devices with chat deferred. A prose fix only; no specimen touched. It is the first thing a new contributor reads, so it should not describe a different product.</td></tr>
       <tr><td><b>Chat bubble &amp; composer</b></td><td><span class="tag def">keep</span></td><td><code>58-chat-bubble</code> and <code>59-chat-composer</code> exist for a v2 feature. Keep them untouched — they are what the scratchpad and the streamed-output surfaces borrow from.</td></tr>
@@ -1426,15 +1425,15 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
 <!-- ============================================================ risks -->
 <section class="sheet" id="risks">
   <div class="sh"><h2>Pushback &amp; open questions</h2></div>
-  <p class="sub">Where I think this plan is most likely to be wrong, said plainly. The five open questions from the first draft are answered and folded in; what is left is risk, and two things I would still like your instinct on.</p>
+  <p class="sub">Where this plan is most likely to be wrong, said plainly. The five open questions from the first draft are answered and folded in; what is left is risk, and two things still to be settled in use.</p>
 
-  <h3 class="k">Where I expect trouble</h3>
+  <h3 class="k">Where to expect trouble</h3>
   <div class="cols">
     <div class="note blood"><b>Sync is the module that can lose your work.</b> Every other feature fails harmlessly — a declined command or a dropped tunnel costs you nothing. A sync bug overwrites a file. That is why it gets the longest schedule, a dry-run mode during development, and tests that assume it will go wrong. If anything in this plan slips, let it be this, and let it slip by weeks rather than being rushed.</div>
     <div class="note att"><b>Port Lens is the demo, and it is nearly last.</b> That will feel wrong — it is the surface that makes people understand the product. But it depends on the link, the log and the stale discipline, and building it early would mean building those three things badly in service of a screenshot. Since all four milestones are in scope, nothing is lost by its position; it just means the thing you will want to show someone arrives late. If that bothers you, the honest trade is to move it ahead of M4 and accept that milestone 3 slips.</div>
     <div class="note att"><b>The daemon must stay invisible.</b> "Idle CPU near zero" is easy to say and easy to lose: a port scanner polling every second and watchers on four unignored repos will show up in Activity Monitor, and the moment it does, you will quit it. Hence a measured release gate rather than a good intention.</div>
-    <div class="note"><b>60 seconds may be wrong in both directions.</b> Too short for a build you are waiting to approve, too long for an agent that should fail fast. My instinct is that the real answer is <i>detach long work</i> rather than <i>lengthen the timeout</i> — but I would rather find that out at milestone 2 with you using it than argue it now. The trace will tell us: a run of <code>perm.expired</code> events is the evidence either way.</div>
-    <div class="note prov"><b>Nine modules is a long build, and the trace is what keeps it honest.</b> The risk in a build this size is not any single module — it is me reporting a milestone done when it works on the happy path. Tracing from the first call, <code>doctor</code> in week one, and real-machine smoke as a gate on every milestone are the three things that make "done" checkable by you rather than claimed by me.</div>
+    <div class="note"><b>60 seconds may be wrong in both directions.</b> Too short for a build you are waiting to approve, too long for an agent that should fail fast. The likely answer is <i>detach long work</i> rather than <i>lengthen the timeout</i> — better found out at milestone 2, in use, than argued now. The trace settles it: a run of <code>perm.expired</code> events is the evidence either way.</div>
+    <div class="note prov"><b>Nine modules is a long build, and the trace is what keeps it honest.</b> The risk in a build this size is not any single module — it is a milestone called done because it works on the happy path. Tracing from the first call, <code>doctor</code> in week one, and real-machine smoke as a gate on every milestone are the three things that make "done" checkable rather than merely claimed.</div>
   </div>
 
   <h3 class="k">Settled since the first draft</h3>
@@ -1450,16 +1449,16 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-s
     </tbody>
   </table></div>
 
-  <h3 class="k">Two things I would still like your instinct on</h3>
+  <h3 class="k">Two things still to be settled in use</h3>
   <ul class="clean">
-    <li><b>Spaces, day one:</b> which folders would you actually put in a space — and is Desktop the master for all of them, or is there a case where Laptop should be? I do not need this to start, but it shapes which conflict cases I test hardest.</li>
-    <li><b>Trace retention:</b> 50 MB or 7 days is a guess. If you would rather keep a month and spend a few hundred megabytes, say so — it is a config default, but defaults are what people live with.</li>
+    <li><b>Spaces, day one:</b> which folders actually belong in a space — and whether one machine is the master for all of them or there is a real case for the other. Not needed to start, but it shapes which conflict cases get tested hardest.</li>
+    <li><b>Trace retention:</b> 50 MB or 7 days is a guess. A month at a few hundred megabytes is equally defensible — it is a config default, but defaults are what people live with.</li>
   </ul>
 </section>
 
 <footer>
   <span>Ìbejì · build plan · drafted 3 November 2026 · nine modules, four milestones</span>
-  <span>Nothing here is built yet. Decisions are settled; we start with the link.</span>
+  <span>Decisions are settled. It starts with the link.</span>
 </footer>
 
 </div>

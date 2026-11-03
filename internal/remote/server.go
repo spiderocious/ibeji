@@ -88,12 +88,21 @@ func (s *Server) Serve(ctx context.Context, stream link.Stream) {
 		return
 	}
 
+	// json.Decoder reads ahead into its own buffer, so for a request that is
+	// followed by content — a write — it will have already swallowed the
+	// first bytes of that content. `rest` is what it buffered past the end of
+	// the JSON, and the body must be read from there first.
+	//
+	// Without this a write hung forever waiting for bytes the decoder was
+	// already holding, which is exactly what it did the first time.
 	var req Request
 	dec := json.NewDecoder(io.LimitReader(stream, 1<<20))
 	if err := dec.Decode(&req); err != nil {
 		s.fail(stream, "bad_request", fmt.Sprintf("malformed request: %v", err), "")
 		return
 	}
+	body := io.MultiReader(dec.Buffered(), stream)
+
 	// Clear the deadline: a command may legitimately run for minutes.
 	_ = stream.SetReadDeadline(time.Time{})
 
@@ -123,7 +132,7 @@ func (s *Server) Serve(ctx context.Context, stream link.Stream) {
 		}
 	}
 
-	err := s.dispatch(ctx, stream, req)
+	err := s.dispatch(ctx, stream, req, body)
 	ev := TraceEvent{
 		Type:       string(req.Op),
 		Op:         req.Op,
@@ -191,7 +200,7 @@ func permissionError(err error, device string) (code, hint string) {
 }
 
 // dispatch runs the operation.
-func (s *Server) dispatch(ctx context.Context, stream link.Stream, req Request) error {
+func (s *Server) dispatch(ctx context.Context, stream link.Stream, req Request, body io.Reader) error {
 	switch req.Op {
 	case OpList:
 		entries, err := List(req.Path)
@@ -233,7 +242,7 @@ func (s *Server) dispatch(ctx context.Context, stream link.Stream, req Request) 
 		if req.Write == nil {
 			return s.fail(stream, "bad_request", "write request has no body", "")
 		}
-		if err := Write(req.Path, *req.Write, stream); err != nil {
+		if err := Write(req.Path, *req.Write, body); err != nil {
 			return s.fail(stream, "internal", err.Error(), "")
 		}
 		return writeResponse(stream, Response{})

@@ -116,9 +116,15 @@ func (d *Daemon) Supervise(ctx context.Context) {
 			d.store.SetPeerName(name)
 		}
 
-		// A heartbeat notices a peer that went away without closing — a lid
-		// shutting, a process killed, a network vanishing. TCP alone would not.
+		// Both sides serve streams, not just the accepter.
+		//
+		// Either machine may ask the other to do something, so both must be
+		// accepting streams on the shared connection. Without this the dialer
+		// answered nothing: its peer's requests were never accepted, and even
+		// the heartbeat's control stream timed out and tore the link down
+		// every twenty seconds.
 		linkCtx, cancelLink := context.WithCancel(ctx)
+		go d.serveStreams(linkCtx, conn)
 		go func() {
 			if err := heartbeat(linkCtx, conn, d.store.Name(), d.store.Paired); err != nil && linkCtx.Err() == nil {
 				d.Logger.Info("device: peer stopped answering", "err", err)
@@ -259,7 +265,15 @@ func (d *Daemon) ServeInbound(ctx context.Context, ln link.Listener) {
 
 		d.Logger.Info("device: accepted link", "from", conn.RemoteAddr())
 		d.SetConn(conn)
-		go d.serveStreams(ctx, conn)
+		go func() {
+			d.serveStreams(ctx, conn)
+			// The accepting side owns this connection, so it clears it when
+			// the link ends — unless the supervisor has already replaced it.
+			conn.Close()
+			if d.Conn() == conn {
+				d.SetConn(nil)
+			}
+		}()
 		// The accepting side heartbeats too: either end may be the one whose
 		// peer vanishes.
 		go func() {
@@ -305,16 +319,11 @@ func (d *Daemon) servePairing(ctx context.Context, conn link.Conn) {
 }
 
 // serveStreams handles what the peer opens on an established link.
+//
+// Run on both sides: either machine may ask the other to do something. It does
+// not own the connection — the supervisor or ServeInbound does — so it returns
+// when the link ends rather than closing it.
 func (d *Daemon) serveStreams(ctx context.Context, conn link.Conn) {
-	defer func() {
-		conn.Close()
-		// Only clear the connection if it is still the live one: by now the
-		// supervisor may have replaced it.
-		if d.Conn() == conn {
-			d.SetConn(nil)
-		}
-	}()
-
 	for {
 		stream, err := conn.Accept(ctx)
 		if err != nil {
@@ -327,6 +336,12 @@ func (d *Daemon) serveStreams(ctx context.Context, conn link.Conn) {
 					d.Logger.Debug("device: control stream failed", "err", err)
 				}
 			}()
+		case link.KindRPC, link.KindExec:
+			// The peer asking this machine to do something. Every side effect
+			// among these passes through the permission engine inside the
+			// remote server — there is no path around it.
+			go d.RemoteServer().Serve(ctx, stream)
+
 		default:
 			// Kinds whose handlers land in later milestones. Closing is the
 			// honest answer: the peer gets a clear end rather than a hang.

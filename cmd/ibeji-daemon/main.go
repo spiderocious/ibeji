@@ -20,6 +20,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/feranmi/ibeji/internal/discovery"
 	"github.com/feranmi/ibeji/internal/identity"
 	"github.com/feranmi/ibeji/internal/link"
+	"github.com/feranmi/ibeji/internal/trace"
 )
 
 // Set by the linker; see the Makefile.
@@ -131,10 +133,32 @@ func run(logger *slog.Logger, apiAddr string, peerPort int, noMDNS bool, instanc
 	d.SetListenAddr(peerLn.Addr().String())
 	logger.Info("daemon: accepting peer connections", "addr", peerLn.Addr())
 
+	// The trace goes in with the API, not after it: every call is traced from
+	// the first call, because retrofitting means missing the ones you forget.
+	tracePath := filepath.Join(stateDirOr(stateDir), "trace.db")
+	tracer, err := trace.Open(tracePath)
+	if err != nil {
+		// A trace that cannot be opened must not stop the daemon: the product
+		// matters more than its diagnostics.
+		logger.Warn("daemon: could not open the trace", "path", tracePath, "err", err)
+	} else {
+		d.SetTrace(tracer)
+		defer tracer.Close()
+		// Attach it to the API's middleware, so every request is traced from
+		// the first request rather than only the ones a handler remembers.
+		server.Tracer = apiTracer{tracer}
+		logger.Info("daemon: tracing", "path", tracePath)
+	}
+
 	server.RegisterDeviceRoutes(d)
+	server.RegisterRemoteRoutes(d)
+	server.RegisterDiagnosticRoutes(d)
 	if err := server.Start(apiAddr); err != nil {
 		return fmt.Errorf("start API: %w", err)
 	}
+	// Doctor checks the local API the way a client would, so it needs the
+	// same endpoint and token a client reads from the handoff file.
+	d.SetAPIDetails(server.Endpoint(), token, keychain)
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -252,4 +276,46 @@ func instanceName(instance string) string {
 		host = "Mac"
 	}
 	return host + " (" + instance + ")"
+}
+
+// stateDirOr resolves where per-instance state lives.
+func stateDirOr(dir string) string {
+	if dir != "" {
+		return dir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ".ibeji"
+	}
+	return filepath.Join(home, ".ibeji")
+}
+
+// apiTracer adapts the trace recorder to the API's middleware.
+//
+// Payloads are redacted on the way in: the two absolute exclusions — clipboard
+// contents and file bodies — are enforced where events are written, never left
+// to whoever reads them later.
+type apiTracer struct{ rec *trace.Recorder }
+
+func (t apiTracer) Record(ev api.TraceEvent) {
+	// Name the endpoint rather than logging every call as "api.request":
+	// a trace whose every line reads the same explains nothing.
+	typ := ev.Type
+	if ev.Path != "" {
+		typ = "api" + strings.ReplaceAll(strings.TrimPrefix(ev.Path, "/v1"), "/", ".")
+	}
+	t.rec.Record(trace.Event{
+		At:         ev.At,
+		Type:       typ,
+		Provenance: ev.Provenance,
+		Request: trace.Redact(map[string]any{
+			"method": ev.Method,
+			"path":   ev.Path,
+			"status": ev.Status,
+		}),
+		Response:   trace.Redact(ev.Response),
+		Code:       string(ev.Code),
+		Error:      ev.Err,
+		DurationMS: ev.DurationMS,
+	})
 }

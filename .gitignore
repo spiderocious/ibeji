@@ -20,3 +20,6 @@ app/.vite/
 
 # macOS
 .DS_Store
+
+# your public-facing drafts — tracked when you say so
+docs/public/

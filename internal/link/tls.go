@@ -85,6 +85,38 @@ func peerKeyFrom(state tls.ConnectionState) (ed25519.PublicKey, error) {
 	return pub, nil
 }
 
+// KeyProvider reports the key to expect right now.
+//
+// The pin is read at handshake time rather than captured when the listener was
+// built, because the pin changes while the listener is alive: unpairing must
+// take effect immediately, and a listener holding a snapshot would go on
+// accepting the device the user just revoked. That was a real bug — alpha
+// accepted a connection from beta 35ms after unpairing it.
+type KeyProvider func() ed25519.PublicKey
+
+// verifyPinnedLive builds a verification callback that consults the provider
+// on every handshake.
+func verifyPinnedLive(current KeyProvider) func(tls.ConnectionState) error {
+	return func(state tls.ConnectionState) error {
+		got, err := peerKeyFrom(state)
+		if err != nil {
+			return err
+		}
+		expect := current()
+		if expect == nil {
+			// Unpaired: there is nobody this device is willing to talk to.
+			return fmt.Errorf("%w: this device is not paired", identity.ErrNotPaired)
+		}
+		if !got.Equal(expect) {
+			return fmt.Errorf("%w (presented %s, pinned %s)",
+				identity.ErrKeyMismatch,
+				identity.Fingerprint(got),
+				identity.Fingerprint(expect))
+		}
+		return nil
+	}
+}
+
 // verifyPinned builds the verification callback both sides use.
 //
 // It runs in place of certificate-chain validation, not alongside it: there is
@@ -159,6 +191,76 @@ func ServerConfig(id *identity.Identity, name string, expect ed25519.PublicKey) 
 		cfg.VerifyConnection = requirePeerCertificate
 	}
 	return cfg, nil
+}
+
+// ServerConfigLive builds an accepting configuration that reads the pin at
+// handshake time.
+//
+// Used by the daemon's long-lived listener, where the pinned key changes
+// underneath it: unpair, then re-pair with a different machine, all without
+// restarting. A nil provider, or one returning nil, means unpaired — and an
+// unpaired device accepts nobody, except during the pairing ceremony which
+// uses ServerConfigPairing.
+func ServerConfigLive(id *identity.Identity, name string, current KeyProvider) (*tls.Config, error) {
+	cert, err := selfSignedCert(id, name)
+	if err != nil {
+		return nil, err
+	}
+	cfg := tlsConfig(cert)
+	cfg.ClientAuth = tls.RequireAnyClientCert
+	cfg.VerifyConnection = verifyPinnedLive(current)
+	return cfg, nil
+}
+
+// ServerConfigEither accepts the pinned peer when one is pinned, and any
+// certificate-presenting peer when none is.
+//
+// This is what the daemon's listener uses. An unpaired device accepts a
+// stranger — that is how pairing starts, and the other machine may be the one
+// that clicks first — but grants nothing by it: the connection serves control
+// streams only until a key is pinned. Once one is, that key alone is accepted.
+func ServerConfigEither(id *identity.Identity, name string, current KeyProvider) (*tls.Config, error) {
+	cert, err := selfSignedCert(id, name)
+	if err != nil {
+		return nil, err
+	}
+	cfg := tlsConfig(cert)
+	cfg.ClientAuth = tls.RequireAnyClientCert
+	cfg.VerifyConnection = func(state tls.ConnectionState) error {
+		got, err := peerKeyFrom(state)
+		if err != nil {
+			return err
+		}
+		expect := current()
+		if expect == nil {
+			// Unpaired: accept, because this is how pairing starts. Whoever
+			// is at the other machine clicks first, and this side has no
+			// ceremony of its own yet — gating on one meant a device could
+			// only ever be paired *from* here, never *to* here.
+			//
+			// Accepting here is safe because an unpaired device grants nothing
+			// by connecting: servePairing allows control streams only, and
+			// trust still rests entirely on a human comparing six digits.
+			//
+			// What stops an ex-peer walking back in after unpairing is not
+			// this check but servePairing refusing to treat the connection as
+			// a link, so neither side reports itself linked.
+			return nil
+		}
+		if !got.Equal(expect) {
+			return fmt.Errorf("%w (presented %s, pinned %s)",
+				identity.ErrKeyMismatch,
+				identity.Fingerprint(got),
+				identity.Fingerprint(expect))
+		}
+		return nil
+	}
+	return cfg, nil
+}
+
+// ServerConfigPairing accepts any key but requires one, for the ceremony.
+func ServerConfigPairing(id *identity.Identity, name string) (*tls.Config, error) {
+	return ServerConfig(id, name, nil)
 }
 
 // requirePeerCertificate is the pairing-time check: we do not yet know which

@@ -235,3 +235,14 @@ func (p *Pairer) Sweep() int {
 
 // Active reports how many sessions are in flight, for tests and the API.
 func (p *Pairer) Active() int { return len(p.sessions) }
+
+// Clear abandons every in-flight session.
+//
+// Called on unpair. Without it, a half-finished ceremony left the listener
+// willing to accept a stranger, and the ex-peer's supervisor walked straight
+// back in within a second — so revoking a device did nothing visible.
+func (p *Pairer) Clear() int {
+	n := len(p.sessions)
+	p.sessions = map[string]*PairingSession{}
+	return n
+}

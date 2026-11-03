@@ -21,6 +21,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Label is the LaunchAgent's reverse-DNS identifier.
@@ -277,14 +278,42 @@ func load(label, path string) error {
 	if err != nil {
 		return err
 	}
-	// Unload an existing job first; bootstrap fails if one is already there.
-	_ = exec.Command("launchctl", "bootout", dom+"/"+label).Run()
+	target := dom + "/" + label
 
-	out, err := exec.Command("launchctl", "bootstrap", dom, path).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("launchagent: bootstrap %s: %w: %s", label, err, strings.TrimSpace(string(out)))
+	// Unload an existing job first; bootstrap fails if one is already there.
+	//
+	// bootout returns before launchd has finished removing the job, so a
+	// bootstrap issued immediately after can still collide with it and fail
+	// as "Input/output error" — which names neither the job nor the cause.
+	// That is the upgrade path, so it has to be waited out rather than hoped
+	// past.
+	_ = exec.Command("launchctl", "bootout", target).Run()
+	waitUntilGone(target)
+
+	// Retry briefly: launchd can still be settling even after the job stops
+	// being listed, and this is the difference between an upgrade that works
+	// and one that leaves the user with no daemon.
+	var lastOut []byte
+	for attempt := 0; attempt < 5; attempt++ {
+		out, err := exec.Command("launchctl", "bootstrap", dom, path).CombinedOutput()
+		if err == nil {
+			return nil
+		}
+		lastOut = out
+		time.Sleep(200 * time.Millisecond)
+		waitUntilGone(target)
 	}
-	return nil
+	return fmt.Errorf("launchagent: bootstrap %s: %s", label, strings.TrimSpace(string(lastOut)))
+}
+
+// waitUntilGone blocks until launchd stops reporting the job, or gives up.
+func waitUntilGone(target string) {
+	for attempt := 0; attempt < 25; attempt++ {
+		if err := exec.Command("launchctl", "print", target).Run(); err != nil {
+			return // no longer known to launchd
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 // Uninstall unloads the job and removes the plist.

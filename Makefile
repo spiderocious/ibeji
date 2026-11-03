@@ -71,6 +71,11 @@ check: vet
 	@test -z "$$(gofmt -s -l . | tee /dev/stderr)" || { echo 'gofmt -s -w . needed'; exit 1; }
 	go test -race -count=1 ./...
 
+## e2e: run two real daemons, pair them over TCP, then unpair
+.PHONY: e2e
+e2e: build
+	./test/e2e-pair.sh
+
 ## app: install the Electron app's dependencies
 .PHONY: app
 app:

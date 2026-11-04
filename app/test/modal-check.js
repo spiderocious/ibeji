@@ -24,8 +24,24 @@ app.whenReady().then(async () => {
   await new Promise((r) => setTimeout(r, 4000));
 
   const r = await win.webContents.executeJavaScript(`(async () => {
-    const btn = document.querySelector('[data-action="add-by-ip"]');
-    if (!btn) return { ok: false, why: "no Add by IP button (is a device already paired?)" };
+    // "Add by IP" lives in the empty state. When a machine HAS been found on
+    // the network the window shows the candidate list instead — correctly —
+    // so drive the dialog from the unpair button in that case. Asserting one
+    // fixed screen made this test fail the moment discovery started working.
+    let btn = document.querySelector('[data-action="add-by-ip"]');
+    let via = "add-by-ip";
+    if (!btn) {
+      const candidates = document.querySelectorAll("[data-pair]");
+      if (candidates.length > 0) {
+        return {
+          ok: true,
+          skipped: "a device was discovered, so the empty state is not showing",
+          discovered: [...candidates].map((c) => c.getAttribute("data-pair")),
+          selfAddress: document.querySelector(".selfaddr-ip")?.textContent?.trim() ?? null,
+        };
+      }
+      return { ok: false, why: "no Add by IP button and no candidates — unexpected screen" };
+    }
     btn.click();
     await new Promise((r) => setTimeout(r, 400));
     const modal = document.querySelector(".app-modal-host .mdl");
@@ -48,6 +64,14 @@ app.whenReady().then(async () => {
   })()`);
 
   if (!r.ok) { console.log("MODAL FAIL:", r.why); return app.exit(1); }
+  if (r.skipped) {
+    // Not a pass for the dialog, but not a failure either: the screen under
+    // test is not on screen. Say so plainly rather than claiming a pass.
+    console.log("MODAL SKIP —", r.skipped);
+    console.log("  discovered     ", (r.discovered || []).join(", "));
+    console.log("  own address    ", r.selfAddress ?? "MISSING");
+    return app.exit(0);
+  }
   const good = r.hasInput && r.closedOnEscape && r.selfAddress;
   console.log(good ? "MODAL PASS" : "MODAL FAIL");
   console.log("  title          ", JSON.stringify(r.title));

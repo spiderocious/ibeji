@@ -153,3 +153,10 @@
   gap: var(--s-2);
   flex: none;
 }
+
+/* Below the discovered list: the manual route and this Mac's own address
+   stay reachable even once something has been found. */
+.cd-more {
+  margin-top: var(--s-5);
+  text-align: center;
+}

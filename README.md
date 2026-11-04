@@ -101,8 +101,8 @@ identity stays in the keychain until you unpair.
 
 | Your Mac | Download |
 |---|---|
-| Apple Silicon (M1–M4) | [**Ibeji-0.1.2-arm64.dmg**](https://github.com/spiderocious/ibeji/releases/latest/download/Ibeji-0.1.2-arm64.dmg) |
-| Intel | [**Ibeji-0.1.2.dmg**](https://github.com/spiderocious/ibeji/releases/latest/download/Ibeji-0.1.2.dmg) |
+| Apple Silicon (M1–M4) | [**Ibeji-0.1.3-arm64.dmg**](https://github.com/spiderocious/ibeji/releases/latest/download/Ibeji-0.1.3-arm64.dmg) |
+| Intel | [**Ibeji-0.1.3.dmg**](https://github.com/spiderocious/ibeji/releases/latest/download/Ibeji-0.1.3.dmg) |
 
 ` > About This Mac`. "Apple M…" means Apple Silicon.
 
@@ -149,9 +149,9 @@ inside it matches the architecture on the label before it finishes.
 
 If you only want the CLI and the MCP server — for a headless machine, or for an
 agent — the release also carries
-[`ibeji-cli-0.1.2-darwin-arm64.tar.gz`](https://github.com/spiderocious/ibeji/releases/latest/download/ibeji-cli-0.1.2-darwin-arm64.tar.gz)
+[`ibeji-cli-0.1.3-darwin-arm64.tar.gz`](https://github.com/spiderocious/ibeji/releases/latest/download/ibeji-cli-0.1.3-darwin-arm64.tar.gz)
 and
-[`ibeji-cli-0.1.2-darwin-x64.tar.gz`](https://github.com/spiderocious/ibeji/releases/latest/download/ibeji-cli-0.1.2-darwin-x64.tar.gz):
+[`ibeji-cli-0.1.3-darwin-x64.tar.gz`](https://github.com/spiderocious/ibeji/releases/latest/download/ibeji-cli-0.1.3-darwin-x64.tar.gz):
 the three binaries, nothing else. Extract them somewhere on your PATH and run
 `ibeji install` from that directory. Checksums are in `SHA256SUMS.txt`.
 

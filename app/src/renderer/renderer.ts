@@ -602,11 +602,19 @@ function render(): void {
         </div>
       </div>`;
   } else if (state.candidates.length > 0) {
+    // Discovery found something, but the address and the manual route stay
+    // available: the machine on screen is not always the one you meant, and
+    // a second Mac may still be arriving. Hiding them the moment anything
+    // appears is how the address became unreachable in the first place.
     body = `
       <div class="cd">
         <div class="cd-head"><div class="cd-title">On this network</div>
           <div class="cd-count">${state.candidates.length}</div></div>
         <div class="cd-body">${state.candidates.map(candidateRow).join("")}</div>
+      </div>
+      <div class="cd-more">
+        <button class="btn btn-secondary btn-sm" data-action="add-by-ip">Add by IP address</button>
+        ${selfAddressView()}
       </div>`;
   } else {
     // The hint comes from the daemon, which is what knows *why* the list is

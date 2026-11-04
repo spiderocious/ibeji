@@ -134,17 +134,40 @@ fi
 # --- the ceremony ---
 
 step "Pairing over TCP"
+# Only ONE side is told to pair, because that is all a user does: they type an
+# IP (or click Pair) on one machine and walk to the other. Driving both sides
+# here is what hid the v0.1.3 bug — the daemon that was dialled never raised a
+# ceremony of its own, so it showed nothing, and a test that started one for it
+# could not tell. Beta's code must come from beta reacting to alpha.
 A=$(api "$AEP" "$ATK" POST /v1/pair/start "{\"address\":\"127.0.0.1:$BETA_PORT\"}")
-B=$(api "$BEP" "$BTK" POST /v1/pair/start "{\"address\":\"127.0.0.1:$ALPHA_PORT\"}")
 ACODE=$(echo "$A" | field "['code']")
-BCODE=$(echo "$B" | field "['code']")
 
 if [[ -z "$ACODE" ]]; then
   fail "alpha could not start pairing: $A"
+fi
+
+# Poll beta's pending ceremony — the window does exactly this on a timer.
+BCODE=""
+for attempt in $(seq 1 20); do
+  BCODE=$(api "$BEP" "$BTK" GET /v1/pair | field "['pairing']['code']")
+  [[ -n "$BCODE" ]] && break
+  sleep 0.5
+done
+
+if [[ -z "$BCODE" ]]; then
+  fail "beta shows no code: the machine that was dialled raised no ceremony, so there is nothing to compare against"
 elif [[ "$ACODE" == "$BCODE" ]]; then
-  pass "both machines show the same code ($ACODE)"
+  pass "both machines show the same code ($ACODE), beta without being asked"
 else
   fail "codes differ: alpha=$ACODE beta=$BCODE — the ceremony is broken"
+fi
+
+# Beta must have learned alpha's name too, not just a bare address.
+BPEER=$(api "$BEP" "$BTK" GET /v1/pair | field "['pairing']['peerName']")
+if [[ "$BPEER" == *alpha* ]]; then
+  pass "beta learned alpha's name without being told to pair"
+else
+  fail "beta's peer name is '$BPEER', expected it to name alpha"
 fi
 
 # Each side must have learned the OTHER's name and fingerprint.
@@ -155,8 +178,10 @@ else
   fail "alpha's peer name is '$APEER', expected it to name beta"
 fi
 
-api "$AEP" "$ATK" POST /v1/pair/confirm '{"sessionId":"pair-1"}' > /dev/null
-api "$BEP" "$BTK" POST /v1/pair/confirm '{"sessionId":"pair-1"}' > /dev/null
+ASESS=$(echo "$A" | field "['id']")
+BSESS=$(api "$BEP" "$BTK" GET /v1/pair | field "['pairing']['id']")
+api "$AEP" "$ATK" POST /v1/pair/confirm "{\"sessionId\":\"$ASESS\"}" > /dev/null
+api "$BEP" "$BTK" POST /v1/pair/confirm "{\"sessionId\":\"$BSESS\"}" > /dev/null
 
 if wait_for "$AEP" "$ATK" live 20 && wait_for "$BEP" "$BTK" live 20; then
   pass "the link came up on both sides"

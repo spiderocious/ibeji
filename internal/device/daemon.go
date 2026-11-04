@@ -439,7 +439,7 @@ func (d *Daemon) BeginPairing(address string) (*api.PairingView, error) {
 	name := address
 	var lastErr error
 	for attempt := 0; attempt < 5; attempt++ {
-		got, err := exchangeNames(ctx, conn, d.store.Name(), false)
+		got, _, err := exchangeHello(ctx, conn, d.store.Name(), false, d.peerPort())
 		if err == nil {
 			name = got
 			lastErr = nil

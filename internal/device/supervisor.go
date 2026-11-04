@@ -5,8 +5,10 @@ import (
 	"context"
 	"errors"
 	"math/rand"
+	"sync"
 	"time"
 
+	"github.com/feranmi/ibeji/internal/api"
 	"github.com/feranmi/ibeji/internal/identity"
 	"github.com/feranmi/ibeji/internal/link"
 )
@@ -291,12 +293,29 @@ func (d *Daemon) ServeInbound(ctx context.Context, ln link.Listener) {
 // connection open, and claims no link: nothing is trusted yet, so nothing but
 // the name exchange is allowed, and the daemon's device list stays empty until
 // the ceremony completes.
+//
+// It also raises a pairing session of its own. Both sides must, because the
+// ceremony is a *comparison*: six digits on this screen matched against six on
+// the other. Answering the name exchange and stopping there — which is what
+// this did — left the dialling machine showing a code the receiving machine
+// had never computed, so there was nothing to compare it with and pairing
+// could not be completed from either end.
+//
+// The key comes from the TLS handshake, not from anything the peer asserts in
+// a message, so the digits are derived from the identity actually on the wire.
+// DeriveCode sorts the two keys, so both machines reach the same number
+// regardless of which one dialled.
 func (d *Daemon) servePairing(ctx context.Context, conn link.Conn) {
 	defer conn.Close()
 
 	// A ceremony that has not finished within the pairing window is over.
 	ctx, cancel := context.WithTimeout(ctx, link.PairingWindow)
 	defer cancel()
+
+	// Raise at most one session per connection: the peer may open several
+	// control streams (the dialler retries the name exchange), and each must
+	// not add another ceremony to the window.
+	var once sync.Once
 
 	for {
 		stream, err := conn.Accept(ctx)
@@ -311,11 +330,69 @@ func (d *Daemon) servePairing(ctx context.Context, conn link.Conn) {
 		go func() {
 			// Unpaired here, so Paired is false: that is how the other side
 			// learns we have revoked it rather than silently relinking.
-			if err := serveControl(stream, d.store.Name(), d.store.Paired()); err != nil {
+			name, port, err := serveHello(stream, d.store.Name(), d.store.Paired(), d.peerPort())
+			if err != nil {
 				d.Logger.Debug("device: pairing control stream failed", "err", err)
 			}
+			if name == "" {
+				return
+			}
+			once.Do(func() { d.beginInboundPairing(conn, name, port) })
 		}()
 	}
+}
+
+// beginInboundPairing raises this side's half of a ceremony the peer started.
+//
+// Best-effort: a failure here must not break the control exchange, because a
+// peer that cannot pair should still be able to learn this machine's name.
+func (d *Daemon) beginInboundPairing(conn link.Conn, name string, peerPort int) {
+	// Already paired is not an error worth logging loudly: the window may
+	// simply have closed between accepting and here.
+	if d.store.Paired() {
+		return
+	}
+
+	keyed, ok := conn.(link.KeyedConn)
+	if !ok {
+		d.Logger.Debug("device: inbound pairing connection cannot report its peer's key")
+		return
+	}
+	pub, err := keyed.PeerKey()
+	if err != nil {
+		d.Logger.Warn("device: could not read the peer's key during pairing", "err", err)
+		return
+	}
+
+	// If a session for this key is already in flight, keep it. The peer may
+	// reconnect within the window, and replacing the session would change the
+	// id the window is polling — the code is the same either way, but the
+	// user would watch the ceremony reset for no reason.
+	if existing := d.pairer.Latest(); existing != nil &&
+		existing.Peer.PublicKey.Equal(pub) {
+		return
+	}
+
+	// The connection's remote address carries the peer's *source* port, which
+	// is ephemeral — pinning it yields an address nothing is bound to, and the
+	// supervisor could never dial back. Rebuild it from the host on the wire
+	// and the port the peer reported it listens on.
+	address := ""
+	if a := conn.RemoteAddr(); a != nil {
+		address = peerAddress(a.String(), peerPort)
+	}
+
+	session, err := d.pairer.Begin(link.PairingOffer{
+		DeviceName: name,
+		PublicKey:  pub,
+		Address:    address,
+	})
+	if err != nil {
+		d.Logger.Warn("device: could not start inbound pairing", "peer", name, "err", err)
+		return
+	}
+	d.Logger.Info("device: pairing started by the other machine", "peer", name, "address", address)
+	d.publish(api.EventPairingStarted, api.PairingViewFrom(session))
 }
 
 // serveStreams handles what the peer opens on an established link.
@@ -332,7 +409,7 @@ func (d *Daemon) serveStreams(ctx context.Context, conn link.Conn) {
 		switch stream.Kind() {
 		case link.KindControl:
 			go func() {
-				if err := serveControl(stream, d.store.Name(), d.store.Paired()); err != nil {
+				if _, _, err := serveHello(stream, d.store.Name(), d.store.Paired(), d.peerPort()); err != nil {
 					d.Logger.Debug("device: control stream failed", "err", err)
 				}
 			}()

@@ -40,6 +40,8 @@ cleanup() {
 trap cleanup EXIT
 
 handoff() { python3 -c "import json;print(json.load(open('$HOME/.ibeji/instances/$1/api.json'))['$2'])" 2>/dev/null; }
+# jq-free field extraction, so this runs without extra tools installed.
+field() { python3 -c "import json,sys;d=json.load(sys.stdin);print(d$1)" 2>/dev/null; }
 api() {
   local ep="$1" tok="$2" method="$3" path="$4" body="${5:-}"
   if [[ -n "$body" ]]; then
@@ -72,10 +74,19 @@ if [[ -z "${AEP:-}" || -z "${BEP:-}" ]]; then
   echo "  daemons did not start:" >&2; tail -5 "$SCRATCH/a.log" "$SCRATCH/b.log" >&2; exit 1
 fi
 
-api "$AEP" "$ATK" POST /v1/pair/start "{\"address\":\"127.0.0.1:$B_PORT\"}" > /dev/null
-api "$BEP" "$BTK" POST /v1/pair/start "{\"address\":\"127.0.0.1:$A_PORT\"}" > /dev/null
-api "$AEP" "$ATK" POST /v1/pair/confirm '{"sessionId":"pair-1"}' > /dev/null
-api "$BEP" "$BTK" POST /v1/pair/confirm '{"sessionId":"pair-1"}' > /dev/null
+# One side dials; the other raises its own ceremony in response, so only
+# alpha starts one here. Session ids are read back rather than assumed: beta's
+# is created by the inbound connection, not by a request of its own.
+APAIR=$(api "$AEP" "$ATK" POST /v1/pair/start "{\"address\":\"127.0.0.1:$B_PORT\"}")
+ASESS=$(echo "$APAIR" | field "['id']")
+BSESS=""
+for attempt in $(seq 1 20); do
+  BSESS=$(api "$BEP" "$BTK" GET /v1/pair | field "['pairing']['id']")
+  [[ -n "$BSESS" ]] && break
+  sleep 0.5
+done
+api "$AEP" "$ATK" POST /v1/pair/confirm "{\"sessionId\":\"$ASESS\"}" > /dev/null
+api "$BEP" "$BTK" POST /v1/pair/confirm "{\"sessionId\":\"$BSESS\"}" > /dev/null
 # B runs commands for A without prompting, which is what Bypass is for
 # between two machines the same person owns.
 api "$BEP" "$BTK" POST /v1/devices/mode '{"deviceId":"","mode":"bypass"}' > /dev/null

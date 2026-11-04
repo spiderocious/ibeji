@@ -34,7 +34,15 @@ func newDaemon(t *testing.T, name string) *Daemon {
 	return d
 }
 
-// pairDaemons runs the ceremony between two daemons, as the real flow does.
+// pairDaemons pins two daemons to each other, for tests that want a paired
+// fixture rather than the ceremony itself.
+//
+// It stages both halves by hand, which the real network path does NOT do: the
+// dialling daemon raises its session in BeginPairing and the accepting one
+// raises its own in servePairing. So this helper cannot see a break in that
+// handshake — it did not see the one that shipped in v0.1.3. The ceremony as
+// it actually runs over a connection is covered in pairing_network_test.go,
+// and that is where a change to it must be tested.
 func pairDaemons(t *testing.T, a, b *Daemon) {
 	t.Helper()
 	as, err := a.Pairer().Begin(b.Pairer().Offer("192.168.1.31"))
@@ -448,7 +456,7 @@ func TestControlHelloCarriesPairingState(t *testing.T) {
 			if err != nil {
 				return
 			}
-			go func() { _ = serveControl(stream, "Desktop", false) }()
+			go func() { _, _ = serveControl(stream, "Desktop", false) }()
 		}
 	}()
 
@@ -490,7 +498,7 @@ func TestPairingExchangeToleratesUnpairedPeer(t *testing.T) {
 			if err != nil {
 				return
 			}
-			go func() { _ = serveControl(stream, "Desktop", false) }()
+			go func() { _, _ = serveControl(stream, "Desktop", false) }()
 		}
 	}()
 

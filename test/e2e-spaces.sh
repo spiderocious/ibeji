@@ -65,10 +65,19 @@ for _ in $(seq 1 20); do
 done
 [[ -n "${AEP:-}" && -n "${BEP:-}" ]] || { tail -5 "$SCRATCH"/*.log >&2; exit 1; }
 
-api "$AEP" "$ATK" POST /v1/pair/start "{\"address\":\"127.0.0.1:$B_PORT\"}" > /dev/null
-api "$BEP" "$BTK" POST /v1/pair/start "{\"address\":\"127.0.0.1:$A_PORT\"}" > /dev/null
-api "$AEP" "$ATK" POST /v1/pair/confirm '{"sessionId":"pair-1"}' > /dev/null
-api "$BEP" "$BTK" POST /v1/pair/confirm '{"sessionId":"pair-1"}' > /dev/null
+# One side dials; the other raises its own ceremony in response, so only
+# alpha starts one here. Session ids are read back rather than assumed: beta's
+# is created by the inbound connection, not by a request of its own.
+APAIR=$(api "$AEP" "$ATK" POST /v1/pair/start "{\"address\":\"127.0.0.1:$B_PORT\"}")
+ASESS=$(echo "$APAIR" | field "['id']")
+BSESS=""
+for attempt in $(seq 1 20); do
+  BSESS=$(api "$BEP" "$BTK" GET /v1/pair | field "['pairing']['id']")
+  [[ -n "$BSESS" ]] && break
+  sleep 0.5
+done
+api "$AEP" "$ATK" POST /v1/pair/confirm "{\"sessionId\":\"$ASESS\"}" > /dev/null
+api "$BEP" "$BTK" POST /v1/pair/confirm "{\"sessionId\":\"$BSESS\"}" > /dev/null
 api "$BEP" "$BTK" POST /v1/devices/mode '{"deviceId":"","mode":"bypass"}' > /dev/null
 
 linked=0

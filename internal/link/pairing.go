@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/feranmi/ibeji/internal/identity"
@@ -124,6 +125,13 @@ type Pairer struct {
 	selfName string
 	now      func() time.Time
 
+	// mu guards sessions and nextID.
+	//
+	// Both ends of the ceremony now reach this: the API handlers on the
+	// dialling side, and servePairing's per-connection goroutine on the
+	// accepting side. Before the accepting side raised a session of its own
+	// this was single-threaded, which is why the lock arrived late.
+	mu       sync.Mutex
 	sessions map[string]*PairingSession
 	nextID   uint64
 }
@@ -140,7 +148,11 @@ func NewPairer(self *identity.Identity, selfName string) *Pairer {
 
 // SetClock replaces the time source, for tests that need to cross the
 // expiry boundary without sleeping.
-func (p *Pairer) SetClock(now func() time.Time) { p.now = now }
+func (p *Pairer) SetClock(now func() time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.now = now
+}
 
 // Offer is what this device publishes to a peer.
 func (p *Pairer) Offer(address string) PairingOffer {
@@ -155,6 +167,8 @@ func (p *Pairer) Offer(address string) PairingOffer {
 //
 // Both devices call this with the other's offer; both derive the same code.
 func (p *Pairer) Begin(peer PairingOffer) (*PairingSession, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if len(peer.PublicKey) != identity.PublicKeySize {
 		return nil, fmt.Errorf("link: peer offered a %d-byte key", len(peer.PublicKey))
 	}
@@ -177,6 +191,8 @@ func (p *Pairer) Begin(peer PairingOffer) (*PairingSession, error) {
 
 // Session returns an in-flight session by id.
 func (p *Pairer) Session(id string) (*PairingSession, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	s, ok := p.sessions[id]
 	if !ok {
 		return nil, ErrPairingUnknown
@@ -191,6 +207,8 @@ func (p *Pairer) Session(id string) (*PairingSession, error) {
 // session is consumed either way: a failed confirmation must not be retryable
 // against the same session.
 func (p *Pairer) Confirm(id string) (PairingOffer, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	s, ok := p.sessions[id]
 	if !ok {
 		return PairingOffer{}, ErrPairingUnknown
@@ -212,6 +230,8 @@ func (p *Pairer) Confirm(id string) (PairingOffer, error) {
 
 // Cancel abandons a session.
 func (p *Pairer) Cancel(id string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if _, ok := p.sessions[id]; !ok {
 		return ErrPairingUnknown
 	}
@@ -222,6 +242,8 @@ func (p *Pairer) Cancel(id string) error {
 // Sweep drops sessions whose window has closed, so an abandoned attempt does
 // not sit confirmable in memory.
 func (p *Pairer) Sweep() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	now := p.now()
 	n := 0
 	for id, s := range p.sessions {
@@ -234,13 +256,19 @@ func (p *Pairer) Sweep() int {
 }
 
 // Active reports how many sessions are in flight, for tests and the API.
-func (p *Pairer) Active() int { return len(p.sessions) }
+func (p *Pairer) Active() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.sessions)
+}
 
 // Latest returns the most recently started session, or nil.
 //
 // v1 pairs one device at a time, so "the ceremony in flight" is unambiguous;
 // if several were somehow started, the newest is the one on screen.
 func (p *Pairer) Latest() *PairingSession {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	var newest *PairingSession
 	for _, s := range p.sessions {
 		if newest == nil || s.StartedAt.After(newest.StartedAt) {
@@ -256,6 +284,8 @@ func (p *Pairer) Latest() *PairingSession {
 // willing to accept a stranger, and the ex-peer's supervisor walked straight
 // back in within a second — so revoking a device did nothing visible.
 func (p *Pairer) Clear() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	n := len(p.sessions)
 	p.sessions = map[string]*PairingSession{}
 	return n

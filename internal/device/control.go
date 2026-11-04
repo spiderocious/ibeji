@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +35,29 @@ type controlHello struct {
 	// would reconnect and both sides would report themselves linked a second
 	// after one of them revoked the other.
 	Paired bool `json:"paired"`
+
+	// PeerPort is where the sender *listens*, which is not where it dialled
+	// from. The accepting side of a ceremony sees only an ephemeral source
+	// port on the connection — 54603, say — and pinning that gives an address
+	// nothing is bound to, so it can never dial back. Zero from an older peer,
+	// in which case the default port is the best guess available.
+	PeerPort int `json:"peerPort,omitempty"`
+}
+
+// peerAddress rebuilds a dialable address from a connection's remote host and
+// the port the peer says it listens on.
+//
+// The host comes from the connection, never from the message: a peer must not
+// be able to point this machine at a third address.
+func peerAddress(remote string, port int) string {
+	host, _, err := net.SplitHostPort(remote)
+	if err != nil {
+		host = remote
+	}
+	if port <= 0 {
+		port = link.DefaultPort
+	}
+	return net.JoinHostPort(host, strconv.Itoa(port))
 }
 
 // ErrPeerUnpaired means the peer answered but no longer has us paired.
@@ -56,25 +81,32 @@ const heartbeatInterval = 10 * time.Second
 // and after reconnecting so a rename propagates. selfPaired tells the peer
 // whether we still have it pinned.
 func exchangeNames(ctx context.Context, conn link.Conn, selfName string, selfPaired bool) (string, error) {
+	name, _, err := exchangeHello(ctx, conn, selfName, selfPaired, 0)
+	return name, err
+}
+
+// exchangeHello is exchangeNames plus the peer's listening port.
+func exchangeHello(ctx context.Context, conn link.Conn, selfName string, selfPaired bool, selfPort int) (string, int, error) {
 	ctx, cancel := context.WithTimeout(ctx, controlTimeout)
 	defer cancel()
 
 	stream, err := conn.Open(ctx, link.KindControl)
 	if err != nil {
-		return "", fmt.Errorf("device: open control stream: %w", err)
+		return "", 0, fmt.Errorf("device: open control stream: %w", err)
 	}
 	defer stream.Close()
 
 	deadline := time.Now().Add(controlTimeout)
 	if err := stream.SetDeadline(deadline); err != nil {
-		return "", err
+		return "", 0, err
 	}
 
 	if err := json.NewEncoder(stream).Encode(controlHello{
 		DeviceName: selfName,
 		Paired:     selfPaired,
+		PeerPort:   selfPort,
 	}); err != nil {
-		return "", fmt.Errorf("device: send hello: %w", err)
+		return "", 0, fmt.Errorf("device: send hello: %w", err)
 	}
 
 	var peer controlHello
@@ -82,38 +114,50 @@ func exchangeNames(ctx context.Context, conn link.Conn, selfName string, selfPai
 	// exhaust memory here, and this runs before any trust exists.
 	dec := json.NewDecoder(&limitedReader{r: stream, n: 8 << 10})
 	if err := dec.Decode(&peer); err != nil {
-		return "", fmt.Errorf("device: read hello: %w", err)
+		return "", 0, fmt.Errorf("device: read hello: %w", err)
 	}
 	name := sanitiseName(peer.DeviceName)
 	if name == "" {
-		return "", fmt.Errorf("device: peer sent no usable name")
+		return "", 0, fmt.Errorf("device: peer sent no usable name")
 	}
 	// If we think we are paired but the peer does not, this is not a link.
 	if selfPaired && !peer.Paired {
-		return name, ErrPeerUnpaired
+		return name, peer.PeerPort, ErrPeerUnpaired
 	}
-	return name, nil
+	return name, peer.PeerPort, nil
 }
 
-// serveControl answers an inbound control stream.
-func serveControl(stream link.Stream, selfName string, selfPaired bool) error {
+// serveControl answers an inbound control stream, reporting the peer's name.
+//
+// The name is returned rather than discarded because the accepting side of a
+// pairing ceremony needs it: it has to raise a session of its own, and that
+// session is what puts "Laptop" rather than a bare IP beside the six digits.
+func serveControl(stream link.Stream, selfName string, selfPaired bool) (string, error) {
+	name, _, err := serveHello(stream, selfName, selfPaired, 0)
+	return name, err
+}
+
+// serveHello is serveControl plus the ports: it tells the peer where this
+// machine listens, and reports where the peer says it listens.
+func serveHello(stream link.Stream, selfName string, selfPaired bool, selfPort int) (string, int, error) {
 	defer stream.Close()
 	if err := stream.SetDeadline(time.Now().Add(controlTimeout)); err != nil {
-		return err
+		return "", 0, err
 	}
 
 	var peer controlHello
 	dec := json.NewDecoder(&limitedReader{r: stream, n: 8 << 10})
 	if err := dec.Decode(&peer); err != nil {
-		return fmt.Errorf("device: read hello: %w", err)
+		return "", 0, fmt.Errorf("device: read hello: %w", err)
 	}
 	if err := json.NewEncoder(stream).Encode(controlHello{
 		DeviceName: selfName,
 		Paired:     selfPaired,
+		PeerPort:   selfPort,
 	}); err != nil {
-		return fmt.Errorf("device: send hello: %w", err)
+		return sanitiseName(peer.DeviceName), peer.PeerPort, fmt.Errorf("device: send hello: %w", err)
 	}
-	return nil
+	return sanitiseName(peer.DeviceName), peer.PeerPort, nil
 }
 
 // sanitiseName makes a peer-supplied name safe to render.

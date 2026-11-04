@@ -184,11 +184,15 @@ func (d *Device) Stop() {
 	})
 }
 
-// Pair runs the full ceremony and pins both sides, as the real flow does.
+// Pair pins both sides to each other, the one-line path to "two trusted
+// machines" for tests that want a paired fixture.
 //
-// Most tests want a paired fixture rather than the ceremony itself, so this is
-// the one-line path to "two trusted machines". The ceremony's own correctness
-// is tested in internal/link.
+// It is NOT the real ceremony: it calls Begin on both devices itself, whereas
+// over a connection each side raises its own session — the dialler in
+// BeginPairing, the accepter in servePairing. A break between those two is
+// invisible here, which is how v0.1.3 shipped with a ceremony that showed a
+// code on one machine and nothing on the other. The ceremony over a real
+// connection is covered in internal/device/pairing_network_test.go.
 func (p *Pair) Pair() {
 	p.t.Helper()
 

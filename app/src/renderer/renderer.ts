@@ -12,6 +12,7 @@
  */
 
 import type {
+  UpdateStatus,
   Candidate,
   DaemonEvent,
   Device,
@@ -57,6 +58,8 @@ interface State {
   daemonDown: string | undefined;
   /** A transient message shown under the header. */
   notice: { text: string; tone: Tone } | undefined;
+  update: UpdateStatus | undefined;
+  updateBusy: boolean;
 }
 
 const state: State = {
@@ -75,6 +78,8 @@ const state: State = {
   pairing: undefined,
   daemonDown: undefined,
   notice: undefined,
+  update: undefined,
+  updateBusy: false,
 };
 
 // --- helpers ----------------------------------------------------------------
@@ -476,6 +481,43 @@ function tabsView(): string {
     .join("")}</div>`;
 }
 
+/**
+ * The update banner.
+ *
+ * Only shown when there is genuinely something newer: a "you are up to date"
+ * bar is noise on every launch. A failed check says nothing here either — it
+ * answers the Check for updates button instead, where someone is waiting for
+ * a reply.
+ */
+/**
+ * The version on the check-for-updates button.
+ *
+ * A released build is "v0.1.3". A local one carries a git SHA — "522d5ba-dirty"
+ * — which is meaningless on a button and overflows it; those read "dev".
+ */
+function versionLabel(version: string | undefined): string {
+  if (!version) return "Updates";
+  return /^\d+(\.\d+)*$/.test(version.split("-")[0] ?? "") ? `v${version}` : "dev";
+}
+
+function updateView(): string {
+  const u = state.update;
+  if (!u || u.state !== "available") return "";
+  return `
+    <div class="banner banner-attention upd">
+      <div class="upd-text">
+        <strong>Ìbejì ${esc(u.version)} is available.</strong>
+        ${u.notes ? ` ${esc(u.notes)}` : ""}
+      </div>
+      <div class="upd-acts">
+        <button class="btn btn-secondary btn-sm" data-action="update-dismiss">Later</button>
+        <button class="btn btn-primary btn-sm" data-action="update-run"${state.updateBusy ? " disabled" : ""}>
+          ${state.updateBusy ? "Opening Terminal…" : "Update now"}
+        </button>
+      </div>
+    </div>`;
+}
+
 function noticeView(): string {
   if (!state.notice) return "";
   const n = state.notice;
@@ -504,6 +546,8 @@ function render(): void {
       <div class="legend">
         <span class="legend-daemon"><span class="legend-sw" style="background:var(--live)"></span>
           <span class="tx-micro">daemon · alive</span></span>
+        <button class="btn btn-secondary btn-sm" data-action="update-check"
+                title="Check GitHub for a newer version">${esc(versionLabel(self?.version))}</button>
       </div>
     </header>`;
 
@@ -513,6 +557,7 @@ function render(): void {
     root.innerHTML = `
       <div class="app-titlebar-pad"></div>
       ${header}
+      ${updateView()}
       ${noticeView()}
       <main class="app-main">${state.prompts.map(promptView).join("")}</main>`;
     return;
@@ -580,6 +625,7 @@ function render(): void {
     <div class="app-titlebar-pad"></div>
     ${header}
     ${state.devices.length > 0 ? `<div class="app-tabs">${tabsView()}</div>` : ""}
+    ${updateView()}
     ${noticeView()}
     <main class="app-main">${body}</main>`;
 }
@@ -812,6 +858,53 @@ async function addByIP(): Promise<void> {
   await startPairing(trimmed);
 }
 
+/**
+ * Check GitHub for a newer release.
+ *
+ * `quiet` is the launch check: it must not interrupt with "you are up to
+ * date" or "could not reach GitHub" on a window someone just opened. The
+ * button passes false, because a button that says nothing looks broken —
+ * which is the bug this screen already had once.
+ */
+async function checkUpdate(quiet: boolean): Promise<void> {
+  const res = await window.ibeji.checkUpdate();
+  if (!res.ok) {
+    if (!quiet) notify("Could not check for updates.", "attention");
+    return;
+  }
+  state.update = res.value;
+  if (!quiet) {
+    if (res.value.state === "current") notify(`Ìbejì ${res.value.version} is the latest version.`, "live");
+    else if (res.value.state === "unknown") notify("Could not reach GitHub to check for updates.", "attention");
+  }
+  render();
+}
+
+/**
+ * Run the installer in Terminal.
+ *
+ * It replaces /Applications and restarts the daemon, so it runs where it can
+ * be watched rather than silently inside the app — and the script quits this
+ * app partway through, which a process cannot do to the bundle it is
+ * executing from.
+ */
+async function runUpdate(): Promise<void> {
+  state.updateBusy = true;
+  render();
+  const res = await window.ibeji.runUpdate();
+  state.updateBusy = false;
+  if (!res.ok) {
+    const cmd = await window.ibeji.updateCommand();
+    notify(
+      cmd.ok ? `Could not open Terminal. Run: ${cmd.value}` : "Could not start the update.",
+      "attention",
+    );
+  } else {
+    notify("Updating in Terminal. Ìbejì will close and reopen.", "live");
+  }
+  render();
+}
+
 // --- wiring -----------------------------------------------------------------
 
 document.addEventListener("click", (e) => {
@@ -897,6 +990,16 @@ document.addEventListener("click", (e) => {
     case "cancel-pairing":
       void cancelPairing();
       break;
+    case "update-run":
+      void runUpdate();
+      return;
+    case "update-dismiss":
+      state.update = undefined;
+      render();
+      return;
+    case "update-check":
+      void checkUpdate(false);
+      return;
     case "unpair":
       void unpair(target.getAttribute("data-device") ?? "", target.getAttribute("data-name") ?? "");
       break;
@@ -920,3 +1023,12 @@ window.ibeji.onEvent((_e: DaemonEvent) => {
 setInterval(() => void refresh(), 5000);
 
 void refresh();
+
+// One quiet check at launch. Quiet because a window that opens with "could
+// not reach GitHub" over a perfectly working app is worse than a missed
+// update; the banner appears only when there is genuinely something newer.
+void checkUpdate(true);
+
+// And once a day, for a window left open for weeks — without this, the only
+// check is at launch, which a long-lived app never does again.
+setInterval(() => void checkUpdate(true), 24 * 60 * 60 * 1000);

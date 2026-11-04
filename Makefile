@@ -83,6 +83,7 @@ e2e: build
 .PHONY: smoke
 smoke:
 	cd app && npm run smoke
+	cd app && npm run modal-check
 
 ## app: install the Electron app's dependencies
 .PHONY: app

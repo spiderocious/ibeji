@@ -73,6 +73,12 @@ export interface SelfInfo {
   port: number;
 }
 
+/** What a check against GitHub found. "unknown" is a failed check, not an error. */
+export type UpdateStatus =
+  | { state: "current"; version: string }
+  | { state: "available"; version: string; current: string; notes: string; url: string }
+  | { state: "unknown"; reason: string };
+
 /** A pairing in progress: the code to compare across the room. */
 export interface PairingSession {
   id: string;
@@ -114,6 +120,9 @@ export type Result<T> =
  */
 export interface IbejiBridge {
   self(): Promise<Result<SelfInfo>>;
+  checkUpdate(): Promise<Result<UpdateStatus>>;
+  runUpdate(): Promise<Result<void>>;
+  updateCommand(): Promise<Result<string>>;
   devices(): Promise<Result<{ devices: Device[] }>>;
   candidates(): Promise<Result<DiscoveryResult>>;
   /** The ceremony in flight, if any — so a reopened window shows the code. */

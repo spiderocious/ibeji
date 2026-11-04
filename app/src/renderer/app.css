@@ -134,3 +134,22 @@
   color: var(--text-tertiary);
   margin-top: 6px;
 }
+
+/* The update banner carries actions, so it is a row rather than a line of
+   text. Everything else about it comes from .banner in the design system. */
+.upd {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+.upd-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.upd-acts {
+  display: flex;
+  gap: var(--s-2);
+  flex: none;
+}

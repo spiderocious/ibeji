@@ -13,7 +13,8 @@
     "smoke": "npm run build && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron test/smoke.js",
     "dist": "npm run dist:arm64 && npm run dist:x64",
     "dist:arm64": "node scripts/build-binaries.mjs arm64 && npm run build && electron-builder --mac --arm64 --publish never && node scripts/verify-dmg.mjs arm64",
-    "dist:x64": "node scripts/build-binaries.mjs amd64 && npm run build && electron-builder --mac --x64 --publish never && node scripts/verify-dmg.mjs x64"
+    "dist:x64": "node scripts/build-binaries.mjs amd64 && npm run build && electron-builder --mac --x64 --publish never && node scripts/verify-dmg.mjs x64",
+    "modal-check": "npm run build && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron test/modal-check.js"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

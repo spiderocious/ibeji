@@ -15,6 +15,7 @@ import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage } from "ele
 import { join } from "node:path";
 import { ApiClient, ApiError, DaemonUnreachableError } from "./api.js";
 import { ensureInstalled } from "./selfinstall.js";
+import { checkForUpdate, installCommand, runInstaller } from "./update.js";
 
 /**
  * IBEJI_HANDOFF overrides where the window looks for the daemon's endpoint and
@@ -161,6 +162,12 @@ function registerHandlers(): void {
     api.answerPrompt(id, accept, remember),
   );
   handle("doctor", () => api.doctor());
+
+  // Updates. checkForUpdate never throws — a GitHub outage must not surface
+  // as an error banner on a working app.
+  handle("update:check", () => checkForUpdate());
+  handle("update:run", () => runInstaller());
+  handle("update:command", () => Promise.resolve(installCommand()));
 
   handle("pair:start", (address: string) => api.startPairing(address));
   handle("pair:confirm", (sessionId: string) => api.confirmPairing(sessionId));

@@ -26,6 +26,7 @@ import type {
   TunnelRow,
   Result,
   SelfInfo,
+  UpdateStatus,
 } from "../shared/types.js";
 
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<Result<T>> =>
@@ -38,6 +39,12 @@ const bridge = {
   candidates: () => invoke<DiscoveryResult>("candidates"),
   pending: () => invoke<{ pairing: PairingSession | null }>("pending"),
   doctor: () => invoke<{ checks: DoctorCheck[] }>("doctor"),
+
+  // Updates. The check never throws in the main process, so a GitHub outage
+  // arrives here as state "unknown" rather than an error banner.
+  checkUpdate: () => invoke<UpdateStatus>("update:check"),
+  runUpdate: () => invoke<void>("update:run"),
+  updateCommand: () => invoke<string>("update:command"),
 
   // --- pairing -------------------------------------------------------------
   startPairing: (address: string) => invoke<PairingSession>("pair:start", address),

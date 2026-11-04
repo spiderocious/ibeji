@@ -63,6 +63,14 @@ export interface SelfInfo {
   os: string;
   arch: string;
   paired: boolean;
+  /**
+   * This machine's LAN addresses, best first, and the port the peer listener
+   * is bound to. Shown in the window so the other Mac has something to type
+   * when mDNS is blocked: asking for an IP the product never displays sends
+   * people hunting through System Settings.
+   */
+  addresses: string[];
+  port: number;
 }
 
 /** A pairing in progress: the code to compare across the room. */

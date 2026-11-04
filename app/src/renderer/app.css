@@ -69,3 +69,68 @@
   border-bottom: 1px solid var(--paper-400);
   flex: none;
 }
+
+/* The modal host: full-viewport centring for the design system's .mdl.
+ * The card, its head/body/foot and the critical variant all come from
+ * _components.css — this only positions them in the window. */
+.app-modal-host {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--s-5);
+  z-index: var(--z-modal);
+}
+
+/* This machine's own address, shown while unpaired so the other Mac has
+ * something to type. The PRD requires that IPs are never hidden; before this
+ * the product asked for an address it never displayed. */
+.selfaddr {
+  margin-top: var(--s-5);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--edge-hair-soft);
+  text-align: center;
+}
+
+.selfaddr-label {
+  font-size: var(--t-micro);
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+}
+
+.selfaddr-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  font: inherit;
+  background: var(--surface-canvas-sunken);
+  border: 1px solid var(--edge-hair);
+  border-radius: var(--r-sm);
+  padding: 7px 11px;
+  cursor: pointer;
+  transition: border-color var(--d-fast);
+}
+
+.selfaddr-chip:hover {
+  border-color: var(--sea-200);
+}
+
+.selfaddr-ip {
+  font-family: var(--font-record);
+  font-size: var(--t-record);
+  color: var(--text-primary);
+  letter-spacing: var(--track-record);
+}
+
+.selfaddr-act {
+  font-family: var(--font-record);
+  font-size: var(--t-record-xs);
+  color: var(--text-tertiary);
+  letter-spacing: .05em;
+}
+
+.selfaddr-hint {
+  font-size: var(--t-micro);
+  color: var(--text-tertiary);
+  margin-top: 6px;
+}

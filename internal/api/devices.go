@@ -53,6 +53,13 @@ type SelfInfo struct {
 	OS          string `json:"os"`
 	Arch        string `json:"arch"`
 	Paired      bool   `json:"paired"`
+
+	// Addresses are this machine's LAN addresses, best first, and Port is
+	// where the peer listener is bound. The window shows them so the other
+	// Mac has something to type when mDNS is blocked — asking for an IP the
+	// product never displays sends people to System Settings to find it.
+	Addresses []string `json:"addresses"`
+	Port      int      `json:"port"`
 }
 
 // Candidate is a device seen on the LAN and not yet paired with.
@@ -362,7 +369,11 @@ func PairingViewFrom(s *link.PairingSession) *PairingView {
 }
 
 // SelfInfoFrom builds this device's own view.
-func SelfInfoFrom(store *identity.Store, version string) SelfInfo {
+//
+// peerPort is where the peer listener is bound; zero when it is not running
+// yet, in which case the window shows the address without a port rather than
+// a misleading ":0".
+func SelfInfoFrom(store *identity.Store, version string, peerPort int) SelfInfo {
 	return SelfInfo{
 		Name:        store.Name(),
 		Fingerprint: store.Self().Fingerprint(),
@@ -370,5 +381,7 @@ func SelfInfoFrom(store *identity.Store, version string) SelfInfo {
 		OS:          runtime.GOOS,
 		Arch:        runtime.GOARCH,
 		Paired:      store.Paired(),
+		Addresses:   discovery.LocalAddresses(),
+		Port:        peerPort,
 	}
 }

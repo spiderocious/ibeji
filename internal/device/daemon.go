@@ -13,6 +13,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"strconv"
 	"sync"
 	"time"
 
@@ -237,7 +239,28 @@ func (d *Daemon) publish(typ string, data any) {
 
 // Self implements api.DeviceState.
 func (d *Daemon) Self() api.SelfInfo {
-	return api.SelfInfoFrom(d.store, d.Version)
+	return api.SelfInfoFrom(d.store, d.Version, d.peerPort())
+}
+
+// peerPort is the port the peer listener is bound to, or zero if it is not
+// listening yet. Reported so the window can show a complete address for
+// someone to type on the other Mac.
+func (d *Daemon) peerPort() int {
+	d.mu.Lock()
+	addr := d.listenAddr
+	d.mu.Unlock()
+	if addr == "" {
+		return 0
+	}
+	_, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return 0
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return 0
+	}
+	return port
 }
 
 // Paired implements api.DeviceState.

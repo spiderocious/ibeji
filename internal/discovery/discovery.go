@@ -295,3 +295,73 @@ func EmptyStateHint(browsing bool, sawAnyTraffic bool) string {
 			"common on corporate and guest Wi-Fi. Add the other machine by IP address."
 	}
 }
+
+// LocalAddresses returns this machine's LAN addresses, best first.
+//
+// The window shows these so the other Mac can be told where to look when mDNS
+// is blocked — which is the common case on corporate and guest Wi-Fi. Without
+// it, "Add by IP address" asks for something the product never tells you, and
+// the answer is buried in System Settings.
+//
+// Ordering matters more than completeness: a Mac routinely has a dozen
+// addresses and only one of them is the one to type. Private IPv4 on a real
+// interface comes first, then anything else routable. Loopback, link-local and
+// the virtual interfaces that Docker, VPNs and virtualisation leave behind are
+// dropped — typing one of those pairs a machine with itself, or with nothing.
+func LocalAddresses() []string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	type scored struct {
+		addr string
+		rank int
+	}
+	var found []scored
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		// utun* is a VPN or Back to My Mac tunnel, bridge*/vmenet*/vnic* are
+		// virtualisation. An address on one of these is reachable from
+		// somewhere, but not from the Mac on the other side of the room.
+		switch {
+		case strings.HasPrefix(iface.Name, "utun"),
+			strings.HasPrefix(iface.Name, "bridge"),
+			strings.HasPrefix(iface.Name, "vmenet"),
+			strings.HasPrefix(iface.Name, "vnic"),
+			strings.HasPrefix(iface.Name, "llw"),
+			strings.HasPrefix(iface.Name, "awdl"):
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip := ipnet.IP
+			if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+				continue
+			}
+			v4 := ip.To4()
+			if v4 == nil {
+				continue // IPv6 is valid but nobody reads one off a screen.
+			}
+			rank := 1
+			if v4.IsPrivate() {
+				rank = 0 // 192.168/10./172.16 — what a home or office LAN uses.
+			}
+			found = append(found, scored{addr: v4.String(), rank: rank})
+		}
+	}
+	sort.SliceStable(found, func(i, j int) bool { return found[i].rank < found[j].rank })
+	out := make([]string, 0, len(found))
+	for _, f := range found {
+		out = append(out, f.addr)
+	}
+	return out
+}

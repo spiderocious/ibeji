@@ -444,12 +444,23 @@ func TestMDNSAdvertiseAndBrowse(t *testing.T) {
 			}
 
 			// The real assertion: however many interfaces answered, the
-			// registry holds exactly one entry for this device, because it is
+			// registry holds exactly ONE entry for THIS device, because it is
 			// keyed by identity rather than address.
-			if got := reg.Len(); got != 1 {
-				t.Fatalf("registry holds %d entries for one device; per-interface sightings must collapse", got)
+			//
+			// Counting the whole registry was wrong: a developer machine on a
+			// real LAN may see other people's Ìbejì instances, and the test
+			// then failed for a reason that had nothing to do with the code.
+			// Count only entries matching our own key.
+			mine := 0
+			for _, got := range reg.Candidates() {
+				if got.PublicKey.Equal(id.Public()) {
+					mine++
+				}
 			}
-			t.Logf("discovered self at %s (registry holds %d entry)", c.Endpoint(), reg.Len())
+			if mine != 1 {
+				t.Fatalf("registry holds %d entries for this device; per-interface sightings must collapse", mine)
+			}
+			t.Logf("discovered self at %s (%d entry for us, %d on the network)", c.Endpoint(), mine, reg.Len())
 			return
 
 		case err := <-advErr:
@@ -459,6 +470,44 @@ func TestMDNSAdvertiseAndBrowse(t *testing.T) {
 
 		case <-deadline:
 			t.Skip("no usable mDNS response within 15s - multicast is likely blocked here")
+		}
+	}
+}
+
+// The address shown in the window is the one someone types on the other Mac,
+// so the ordering and the filtering are the whole point: a list led by a
+// Docker bridge or a VPN tunnel address is worse than no list, because it
+// looks authoritative and pairs with nothing.
+func TestLocalAddressesAreTypeable(t *testing.T) {
+	got := LocalAddresses()
+	if len(got) == 0 {
+		t.Skip("no usable network on this machine")
+	}
+	for _, a := range got {
+		ip := net.ParseIP(a)
+		if ip == nil {
+			t.Fatalf("LocalAddresses returned %q, which is not an IP", a)
+		}
+		if ip.To4() == nil {
+			t.Errorf("%s is IPv6; nobody reads one of those off a screen", a)
+		}
+		if ip.IsLoopback() {
+			t.Errorf("%s is loopback — pairs a machine with itself", a)
+		}
+		if ip.IsLinkLocalUnicast() {
+			t.Errorf("%s is link-local (169.254/16), which is a DHCP failure, not a LAN", a)
+		}
+	}
+	// Private addresses must sort ahead of public ones: on a normal LAN the
+	// private one is the answer, and the window shows the first.
+	seenPublic := false
+	for _, a := range got {
+		ip := net.ParseIP(a)
+		if ip.IsPrivate() && seenPublic {
+			t.Errorf("private address %s sorted after a public one; the window would show the wrong address", a)
+		}
+		if !ip.IsPrivate() {
+			seenPublic = true
 		}
 	}
 }

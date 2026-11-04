@@ -206,6 +206,41 @@ function deviceRow(d: Device): string {
     </div>`;
 }
 
+/**
+ * This machine's own address, for typing into the other Mac.
+ *
+ * Pairing by IP needs an address from *somewhere*, and before this the product
+ * asked for one it never showed — leaving people to find it in System Settings
+ * while holding a dialog open. The window knows it, so the window says it.
+ *
+ * Only rendered while unpaired: once the link is up the address is noise.
+ */
+function selfAddressView(): string {
+  const addrs = state.self?.addresses ?? [];
+  const best = addrs[0];
+  if (best === undefined) return "";
+  const port = state.self?.port ?? 0;
+  const shown = port > 0 ? `${best}:${port}` : best;
+  // Extra interfaces are worth offering — a Mac on both Wi-Fi and Ethernet
+  // has two, and the first is not always the one the other machine can reach
+  // — but they are secondary, so they sit quietly beneath.
+  const others = addrs.slice(1);
+  return `
+    <div class="selfaddr">
+      <div class="selfaddr-label">This Mac is at</div>
+      <button class="selfaddr-chip" data-copy="${esc(shown)}" title="Copy to clipboard">
+        <span class="selfaddr-ip">${esc(shown)}</span>
+        <span class="selfaddr-act">Copy</span>
+      </button>
+      <div class="selfaddr-hint">Type this into Ìbejì on your other Mac.</div>
+      ${
+        others.length > 0
+          ? `<div class="selfaddr-hint">Also at ${others.map((a) => esc(a)).join(", ")}</div>`
+          : ""
+      }
+    </div>`;
+}
+
 function candidateRow(c: Candidate): string {
   const disabled = c.compatible ? "" : " disabled";
   return `
@@ -537,6 +572,7 @@ function render(): void {
         <div class="es-title">No devices paired</div>
         <div class="es-msg">${esc(state.hint ?? "Looking for your other machine…")}</div>
         <button class="btn btn-secondary btn-sm" data-action="add-by-ip">Add by IP address</button>
+        ${selfAddressView()}
       </div>`;
   }
 
@@ -546,6 +582,88 @@ function render(): void {
     ${state.devices.length > 0 ? `<div class="app-tabs">${tabsView()}</div>` : ""}
     ${noticeView()}
     <main class="app-main">${body}</main>`;
+}
+
+// --- dialogs ----------------------------------------------------------------
+
+/**
+ * An in-app modal, because Electron has no window.prompt or window.confirm.
+ *
+ * Chromium disables both in Electron: window.prompt() *throws*
+ * "prompt() is not supported", which means a click handler calling it dies on
+ * that line and the rest of the handler never runs. The symptom is a button
+ * that does nothing at all — no dialog, no error, no clue. "Add by IP address"
+ * and "Unpair…" were both dead this way, and window.confirm returns false
+ * rather than throwing, so Bypass silently refused instead.
+ *
+ * Resolves to the typed string, or undefined when cancelled. A confirm is the
+ * same thing with no field, resolving to "" for OK.
+ */
+function ask(opts: {
+  title: string;
+  body: string;
+  field?: { label: string; placeholder?: string };
+  confirmLabel: string;
+  critical?: boolean;
+  gravity?: string;
+}): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    const host = document.createElement("div");
+    host.className = "app-modal-host";
+    host.innerHTML = `
+      <div class="ovl-scrim"></div>
+      <div class="mdl${opts.critical ? " is-critical" : ""}" role="dialog" aria-modal="true"
+           aria-label="${esc(opts.title)}">
+        <div class="mdl-head">
+          <h2 class="mdl-title">${esc(opts.title)}</h2>
+          <p class="mdl-sub">${esc(opts.body)}</p>
+        </div>
+        ${
+          opts.field
+            ? `<div class="mdl-body">
+                 <div class="fld-wrap">
+                   <label class="fld-label" for="mo-input">${esc(opts.field.label)}</label>
+                   <input class="fld" id="mo-input" type="text" autocomplete="off"
+                          autocapitalize="off" spellcheck="false"
+                          placeholder="${esc(opts.field.placeholder ?? "")}">
+                 </div>
+               </div>`
+            : ""
+        }
+        <div class="mdl-foot">
+          ${opts.gravity ? `<span class="gravity">${esc(opts.gravity)}</span>` : ""}
+          <button class="btn btn-secondary btn-sm" data-mo="cancel">Cancel</button>
+          <button class="btn btn-primary btn-sm${opts.critical ? " is-destructive" : ""}"
+                  data-mo="ok">${esc(opts.confirmLabel)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(host);
+
+    const input = host.querySelector<HTMLInputElement>("#mo-input");
+    input?.focus();
+
+    let done = false;
+    const close = (value: string | undefined) => {
+      if (done) return;
+      done = true;
+      document.removeEventListener("keydown", onKey, true);
+      host.remove();
+      resolve(value);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close(undefined);
+      // Enter submits only from the field. A stray Enter after tabbing would
+      // otherwise confirm something irreversible.
+      if (e.key === "Enter" && document.activeElement === input) close(input?.value ?? "");
+    };
+    document.addEventListener("keydown", onKey, true);
+    host.addEventListener("click", (e) => {
+      const act = (e.target as HTMLElement).closest("[data-mo]")?.getAttribute("data-mo");
+      if (act === "ok") close(input ? input.value : "");
+      else if (act === "cancel") close(undefined);
+      else if ((e.target as HTMLElement).classList.contains("ovl-scrim")) close(undefined);
+    });
+  });
 }
 
 // --- intents ----------------------------------------------------------------
@@ -581,12 +699,18 @@ async function cancelPairing(): Promise<void> {
  * pinned key and close every tunnel, sync and session at once.
  */
 async function unpair(deviceId: string, name: string): Promise<void> {
-  const typed = window.prompt(
-    `Unpairing ${name} revokes its key and closes every tunnel, sync and session.\n\n` +
-      `Type the device name to confirm:`,
-  );
+  const typed = await ask({
+    title: `Unpair ${name}?`,
+    body:
+      `This revokes its key and closes every tunnel, sync and session at once. ` +
+      `To pair again you repeat the six-digit ceremony on both machines.`,
+    field: { label: `Type ${name} to confirm`, placeholder: name },
+    confirmLabel: "Unpair",
+    critical: true,
+    gravity: "Irreversible",
+  });
   if (typed !== name) {
-    if (typed !== null) notify("The name did not match. Nothing was unpaired.", "attention");
+    if (typed !== undefined) notify("The name did not match. Nothing was unpaired.", "attention");
     return;
   }
   const res = await window.ibeji.unpair(deviceId);
@@ -605,12 +729,17 @@ async function toggleMode(deviceId: string): Promise<void> {
   const next = current === "bypass" ? "prompt" : "bypass";
 
   if (next === "bypass") {
-    const ok = window.confirm(
-      "Bypass mode runs every future command from that machine without asking.\n\n" +
-        "It is not destructive now — it is destructive later, on every command that follows.\n\n" +
-        "Switch to Bypass?",
-    );
-    if (!ok) return;
+    const ok = await ask({
+      title: "Switch to Bypass mode?",
+      body:
+        "Bypass runs every future command from that machine without asking. " +
+        "It is not destructive now — it is destructive later, on every command " +
+        "that follows.",
+      confirmLabel: "Switch to Bypass",
+      critical: true,
+      gravity: "Affects every future command",
+    });
+    if (ok === undefined) return;
   }
   const res = await window.ibeji.setMode(deviceId, next);
   if (res.ok) notify(`Now in ${next === "bypass" ? "Bypass" : "Prompt"} mode.`, next === "bypass" ? "attention" : "live");
@@ -665,12 +794,22 @@ async function closeTunnel(port: number): Promise<void> {
 }
 
 async function addByIP(): Promise<void> {
-  const address = window.prompt(
-    "Add the other machine by IP address.\n\n" +
-      "Multicast is often blocked on corporate and guest Wi-Fi; typing the address works just as well.",
-  );
-  if (!address) return;
-  await startPairing(address.trim());
+  const address = await ask({
+    title: "Add by IP address",
+    body:
+      "Multicast is often blocked on corporate and guest Wi-Fi, so the other " +
+      "machine may not appear by itself. Its address is shown in the Ìbejì " +
+      "window on that Mac.",
+    field: { label: "Address", placeholder: "192.168.1.42" },
+    confirmLabel: "Pair",
+  });
+  if (address === undefined) return;
+  const trimmed = address.trim();
+  if (!trimmed) {
+    notify("Enter the other machine's IP address.", "attention");
+    return;
+  }
+  await startPairing(trimmed);
 }
 
 // --- wiring -----------------------------------------------------------------
@@ -689,6 +828,19 @@ document.addEventListener("click", (e) => {
   if (traceFilter) {
     state.traceErrorsOnly = traceFilter === "errors";
     void refresh();
+    return;
+  }
+
+  // Copy this machine's address, so it can be typed on the other Mac without
+  // transcription errors. Clipboard writes can reject (no focus, no
+  // permission); a silent failure here would look like a dead button, which
+  // is the exact bug this screen already had once.
+  const copy = el.closest("[data-copy]")?.getAttribute("data-copy");
+  if (copy) {
+    void navigator.clipboard
+      .writeText(copy)
+      .then(() => notify(`Copied ${copy}.`, "live"))
+      .catch(() => notify(`Could not copy. The address is ${copy}.`, "attention"));
     return;
   }
 

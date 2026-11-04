@@ -21,6 +21,8 @@ set -eu
 
 REPO="spiderocious/ibeji"
 APP="/Applications/Ibeji.app"
+# Printed in hints. $0 is "sh" when the script is piped, so it cannot be used.
+SELF_URL="https://raw.githubusercontent.com/$REPO/main/scripts/install.sh"
 
 # --- output -----------------------------------------------------------------
 
@@ -30,6 +32,29 @@ if [ -t 1 ]; then
 else
   B=''; G=''; Y=''; R=''; X=''
 fi
+
+FORCE=0
+ASSUME_YES=0
+for arg in "$@"; do
+  case "$arg" in
+    -f|--force) FORCE=1 ;;
+    -y|--yes) ASSUME_YES=1 ;;
+    -h|--help)
+      cat <<'USAGE'
+Install or update Ìbejì.
+
+  curl -fsSL .../install.sh | sh
+  curl -fsSL .../install.sh | sh -s -- --force
+
+  -f, --force   Reinstall even when that version is already installed.
+  -y, --yes     Do not ask anything; assume yes. For scripts and the app's
+                own "Update now" button, which has already asked.
+  -h, --help    This.
+USAGE
+      exit 0 ;;
+    *) ;;
+  esac
+done
 
 say()  { printf '%s\n' "$*"; }
 step() { printf '%s==>%s %s\n' "$B" "$X" "$*"; }
@@ -82,6 +107,59 @@ fi
 URL="https://github.com/$REPO/releases/download/$TAG/$DMG"
 
 ok "found $TAG"
+
+# --- is this version already here? ------------------------------------------
+
+# Without this the script happily spends 130MB and a service interruption to
+# arrive exactly where it started: downloading, quitting the app, stopping the
+# daemon, deleting the bundle, and writing back byte-identical files.
+#
+# Reinstalling is still the right move sometimes — a half-written bundle, a
+# missing LaunchAgent, a deleted CLI link — so this asks rather than refuses.
+INSTALLED=""
+if [ -x "$APP/Contents/Resources/bin/ibeji" ]; then
+  INSTALLED=$("$APP/Contents/Resources/bin/ibeji" --version 2>/dev/null | awk '{print $2}')
+fi
+
+if [ -n "$INSTALLED" ] && [ "$INSTALLED" = "$VERSION" ] && [ "$FORCE" -eq 0 ]; then
+  say ""
+  warn "Ìbejì $VERSION is already installed."
+  say ""
+  say "  Reinstalling downloads $DMG again, stops the daemon and replaces"
+  say "  the app. Worth doing to repair a broken install; otherwise there is"
+  say "  nothing to gain."
+  say ""
+  if [ "$ASSUME_YES" -eq 1 ]; then
+    say "  Continuing anyway (--yes)."
+    say ""
+  elif [ -t 0 ]; then
+    # A pipe into `sh` leaves stdin consumed by the script itself, so the
+    # prompt has to read from the terminal directly or it gets EOF and
+    # silently answers for the person.
+    printf "  Reinstall anyway? [y/N] "
+    read -r answer < /dev/tty || answer=""
+    case "$answer" in
+      [Yy]*) say "" ;;
+      *)
+        say ""
+        say "  Nothing changed. Run with --force to reinstall without asking:"
+        say "    curl -fsSL $SELF_URL | sh -s -- --force"
+        say ""
+        exit 0 ;;
+    esac
+  else
+    # No terminal to ask on — a CI job or a nested script. Doing nothing is
+    # the safe default; --force says otherwise.
+    say "  No terminal to ask on, so nothing was changed."
+    say "  Use --force to reinstall regardless."
+    say ""
+    exit 0
+  fi
+fi
+
+if [ -n "$INSTALLED" ] && [ "$INSTALLED" != "$VERSION" ]; then
+  step "Updating $INSTALLED → $VERSION"
+fi
 
 # --- download ---------------------------------------------------------------
 

@@ -163,7 +163,11 @@ export async function runInstaller(): Promise<void> {
   // osascript's `do script` takes an AppleScript string literal, so a quote
   // or backslash in the command would end the literal early. Neither appears
   // in the URL, but the escaping belongs here rather than in a comment.
-  const command = `curl -fsSL ${INSTALL_URL} | sh`;
+  // --yes: the banner already asked, and the installer's own "already
+  // installed" question would be a second prompt for a decision the person
+  // just made. It still re-reads the version, so a stale banner cannot
+  // trigger a pointless reinstall — it only skips asking twice.
+  const command = `curl -fsSL ${INSTALL_URL} | sh -s -- --yes`;
   const escaped = command.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   await run("osascript", [
     "-e",

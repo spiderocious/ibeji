@@ -78,42 +78,53 @@ make smoke      # the Electron window, with its assertions
 
 ## Installing
 
-Ìbejì is **macOS only**, and needs installing on **both** of your Macs.
+Ìbejì is **macOS only**, and goes on **both** of your Macs. On each one:
 
-| Your Mac | Download |
-|---|---|
-| Apple Silicon (M1–M4) | [**Ibeji-0.1.1-arm64.dmg**](https://github.com/spiderocious/ibeji/releases/latest/download/Ibeji-0.1.1-arm64.dmg) |
-| Intel | [**Ibeji-0.1.1.dmg**](https://github.com/spiderocious/ibeji/releases/latest/download/Ibeji-0.1.1.dmg) |
+```sh
+curl -fsSL https://raw.githubusercontent.com/spiderocious/ibeji/main/scripts/install.sh | sh
+```
 
-Not sure which? ` > About This Mac`. "Apple M…" means Apple Silicon.
-All releases, plus CLI-only tarballs and checksums, are on the
-[releases page](https://github.com/spiderocious/ibeji/releases/latest).
+That is the whole install. It picks the right build for your Mac, checks the
+download against the release's checksums, installs to `/Applications`, starts
+the daemon so it comes back at login, and puts `ibeji` on your PATH. No
+password, no Gatekeeper prompt, nothing to click.
 
-1. Open the DMG and drag **Ibeji** to Applications.
-2. The app is signed but **not notarized** — that needs a paid Apple Developer
-   account. macOS refuses the first launch with *"Apple could not verify Ibeji
-   is free of malware"*, offering only **Move to Trash** and **Done**. Clear it
-   once, either in **System Settings → Privacy & Security → Open Anyway**, or:
-
-   ```sh
-   xattr -dr com.apple.quarantine /Applications/Ibeji.app
-   ```
-
-   (Right-click → Open does *not* work on current macOS. If you ever see
-   "Ibeji is **damaged**", that is a different and genuine fault — please file
-   an issue rather than working around it.)
-3. **Open Ibeji.** That is the whole install: the app sets up the background
-   daemon so it starts at login, and puts `ibeji` on your PATH, by itself.
-
-4. Optional: run `ibeji doctor` in a terminal to confirm. Every failure it
-   reports names its own fix.
-
-Then do the same on the second Mac, and pair them from the window: one machine
-shows a six-digit code, the other must show the same six digits. Both are on
-the same LAN or nothing happens — that is the whole security model.
+Then open Ìbejì on both machines and pair them: one shows six digits, the
+other must show the same six. Both have to be on the same LAN or nothing
+happens — that is the whole security model.
 
 To remove it: `ibeji install --uninstall`, then drag the app to the Bin. Your
 identity stays in the keychain until you unpair.
+
+<details>
+<summary>Prefer to download by hand?</summary>
+
+| Your Mac | Download |
+|---|---|
+| Apple Silicon (M1–M4) | [**Ibeji-0.1.2-arm64.dmg**](https://github.com/spiderocious/ibeji/releases/latest/download/Ibeji-0.1.2-arm64.dmg) |
+| Intel | [**Ibeji-0.1.2.dmg**](https://github.com/spiderocious/ibeji/releases/latest/download/Ibeji-0.1.2.dmg) |
+
+` > About This Mac`. "Apple M…" means Apple Silicon.
+
+Drag Ibeji to Applications and open it — the app installs its own daemon and
+CLI on first launch.
+
+A browser marks everything it downloads, so macOS will refuse the first open
+with *"Apple could not verify Ibeji is free of malware"*. Clear it once in
+**System Settings → Privacy & Security → Open Anyway**, or with:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Ibeji.app
+```
+
+The `curl` installer above avoids this entirely — not by defeating Gatekeeper,
+but because the flag that triggers it is attached by browsers, and `curl` does
+not set it.
+
+(Right-click → Open does *not* work on current macOS. If you ever see "Ibeji
+is **damaged**", that is a different and genuine fault — please file an issue.)
+
+</details>
 
 ### Why macOS complains
 
@@ -138,9 +149,9 @@ inside it matches the architecture on the label before it finishes.
 
 If you only want the CLI and the MCP server — for a headless machine, or for an
 agent — the release also carries
-[`ibeji-cli-0.1.1-darwin-arm64.tar.gz`](https://github.com/spiderocious/ibeji/releases/latest/download/ibeji-cli-0.1.1-darwin-arm64.tar.gz)
+[`ibeji-cli-0.1.2-darwin-arm64.tar.gz`](https://github.com/spiderocious/ibeji/releases/latest/download/ibeji-cli-0.1.2-darwin-arm64.tar.gz)
 and
-[`ibeji-cli-0.1.1-darwin-x64.tar.gz`](https://github.com/spiderocious/ibeji/releases/latest/download/ibeji-cli-0.1.1-darwin-x64.tar.gz):
+[`ibeji-cli-0.1.2-darwin-x64.tar.gz`](https://github.com/spiderocious/ibeji/releases/latest/download/ibeji-cli-0.1.2-darwin-x64.tar.gz):
 the three binaries, nothing else. Extract them somewhere on your PATH and run
 `ibeji install` from that directory. Checksums are in `SHA256SUMS.txt`.
 

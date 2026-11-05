@@ -37,6 +37,11 @@ type Server struct {
 
 	// Ports lists this machine's listening ports, for the port view.
 	Ports func(ctx context.Context) ([]PortInfo, error)
+
+	// Shells owns the long-lived shells the Shell tab types into. Nil until
+	// the daemon wires one in, which keeps every test that does not care
+	// about shells unaffected.
+	Shells *ShellManager
 }
 
 // TraceEvent is what the server reports about a request.
@@ -169,6 +174,24 @@ func (s *Server) guard(ctx context.Context, req Request) (permission.Decision, e
 		a.Kind = permission.KindExec
 		a.Effect = "stop process " + req.ProcessID
 
+	case OpShellOpen:
+		a.Kind = permission.KindExec
+		a.Effect = "open a shell"
+		if req.Shell != nil {
+			a.Cwd = req.Shell.Cwd
+		}
+
+	case OpShellWrite:
+		// The prompt must name the command, not say "a shell wrote
+		// something": approving blind is not approving.
+		a.Kind = permission.KindExec
+		if req.Shell != nil {
+			a.Effect = strings.TrimSpace(req.Shell.Data)
+		}
+		if a.Effect == "" {
+			a.Effect = "run a command in a shell"
+		}
+
 	case OpWrite:
 		a.Kind = permission.KindWrite
 		// The prompt states exactly what will happen: which file, how much.
@@ -297,6 +320,9 @@ func (s *Server) dispatch(ctx context.Context, stream link.Stream, req Request, 
 			out = append(out, OutputChunkJSON{Stream: kind, Text: c.Text})
 		}
 		return writeResponse(stream, Response{Output: out})
+
+	case OpShellOpen, OpShellWrite, OpShellRead, OpShellInterrupt, OpShellClose, OpShellList:
+		return s.serveShell(ctx, stream, req)
 
 	case OpPorts:
 		if s.Ports == nil {
@@ -466,4 +492,91 @@ func Probe(ctx context.Context, req CheckRequest) *CheckResult {
 	res.Reachable = true
 	res.StatusCode = resp.StatusCode
 	return res
+}
+
+// serveShell handles the Shell tab's operations.
+//
+// Opening a shell and typing into it are side effects — they run commands as
+// the logged-in user — so they pass through the permission engine like exec.
+// Reading output does not: it is the result of something already approved,
+// and prompting to see what you asked for would be absurd.
+func (s *Server) serveShell(ctx context.Context, stream link.Stream, req Request) error {
+	if s.Shells == nil {
+		return s.fail(stream, "unsupported", "this machine has no shell support", "")
+	}
+	r := req.Shell
+	if r == nil {
+		// List takes no arguments, so it legitimately arrives without one.
+		if req.Op == OpShellList {
+			r = &ShellRequest{}
+		} else {
+			return s.fail(stream, "bad_request", "no shell request", "")
+		}
+	}
+
+	switch req.Op {
+	case OpShellOpen:
+		sess, err := s.Shells.Open(r.Cwd)
+		if err != nil {
+			return s.fail(stream, "internal", err.Error(), "")
+		}
+		return writeResponse(stream, Response{Shell: &ShellReply{Session: shellInfo(sess)}})
+
+	case OpShellWrite:
+		sess, ok := s.Shells.Get(r.ID)
+		if !ok {
+			return s.fail(stream, "not_found", "no such shell", "")
+		}
+		if err := sess.Write(r.Data); err != nil {
+			return s.fail(stream, "internal", err.Error(), "")
+		}
+		return writeResponse(stream, Response{Shell: &ShellReply{}})
+
+	case OpShellRead:
+		sess, ok := s.Shells.Get(r.ID)
+		if !ok {
+			return s.fail(stream, "not_found", "no such shell", "")
+		}
+		wait := time.Duration(r.WaitMS) * time.Millisecond
+		if wait > 30*time.Second {
+			wait = 30 * time.Second
+		}
+		out, seq, done := sess.Read(r.Since, wait)
+		return writeResponse(stream, Response{Shell: &ShellReply{Output: out, Seq: seq, Done: done}})
+
+	case OpShellInterrupt:
+		sess, ok := s.Shells.Get(r.ID)
+		if !ok {
+			return s.fail(stream, "not_found", "no such shell", "")
+		}
+		// Stopping something already running is not a new side effect, and a
+		// prompt here would mean a runaway command could not be stopped
+		// without someone walking to the other machine.
+		if err := sess.Interrupt(); err != nil {
+			return s.fail(stream, "internal", err.Error(), "")
+		}
+		return writeResponse(stream, Response{Shell: &ShellReply{}})
+
+	case OpShellClose:
+		if err := s.Shells.Remove(r.ID); err != nil {
+			return s.fail(stream, "not_found", err.Error(), "")
+		}
+		return writeResponse(stream, Response{Shell: &ShellReply{}})
+
+	case OpShellList:
+		list := s.Shells.List()
+		infos := make([]ShellInfo, 0, len(list))
+		for _, sess := range list {
+			infos = append(infos, *shellInfo(sess))
+		}
+		return writeResponse(stream, Response{Shell: &ShellReply{Sessions: infos}})
+	}
+	return s.fail(stream, "bad_request", "unknown shell operation", "")
+}
+
+func shellInfo(s *ShellSession) *ShellInfo {
+	return &ShellInfo{
+		ID: s.ID, Shell: s.Shell, Cwd: s.Cwd, PID: s.PID,
+		Started: s.Started, Running: s.Running(),
+	}
 }

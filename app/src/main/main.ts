@@ -146,6 +146,14 @@ function registerHandlers(): void {
   handle("candidates", () => api.candidates());
   handle("pending", () => api.pending());
 
+  handle("shells", () => api.shells());
+  handle("shell:open", (cwd?: string) => api.shellOpen(cwd));
+  handle("shell:write", (id: string, data: string) => api.shellWrite(id, data));
+  handle("shell:read", (id: string, since: number, waitMs: number) =>
+    api.shellRead(id, since, waitMs));
+  handle("shell:interrupt", (id: string) => api.shellInterrupt(id));
+  handle("shell:close", (id: string) => api.shellClose(id));
+
   handle("spaces", () => api.spaces());
   handle("spaces:create", (opts: {
     name: string; path: string; role: "master" | "replica"; mode: "two-way" | "mirror";

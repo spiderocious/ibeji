@@ -397,6 +397,11 @@ func (d *Daemon) Unpair(deviceID string) error {
 	if conn != nil {
 		conn.Close()
 	}
+	// Close every shell: they are reachable only through the pair, and a
+	// revoked device must not leave a live shell running on this machine.
+	if d.remoteServer != nil && d.remoteServer.Shells != nil {
+		d.remoteServer.Shells.CloseAll()
+	}
 	d.Logger.Info("device: unpaired", "peer", peer.Name)
 	d.publish(api.EventDeviceChanged, nil)
 	return nil
@@ -604,6 +609,11 @@ func (d *Daemon) RemoteServer() *remote.Server {
 		s := remote.NewServer(nil, d.perms, d.Logger)
 		s.PeerName = d.PeerName
 		s.Ports = d.LocalPorts
+		// The shells the other machine's Shell tab types into. One manager
+		// for the daemon's life, so a window that closes and reopens finds
+		// its tabs still running.
+		s.Shells = remote.NewShellManager()
+		s.Shells.Logger = d.Logger
 		s.Trace = func(ev remote.TraceEvent) {
 			d.RecordTrace(trace.Event{
 				Type:       ev.Type,

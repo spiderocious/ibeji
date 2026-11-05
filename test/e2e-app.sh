@@ -163,6 +163,54 @@ else
   sed -n 's/^/    /p' "$tc" | head -8
 fi
 
+# An open trace row must survive the poll. The trace is a fixed window of the
+# newest events, so on a busy daemon a row opened to read its payload simply
+# scrolled out of the list — it looked like it had slammed shut by itself.
+sc="$SCRATCH/stability.out"
+if (cd app && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron \
+      test/trace-stability.js > "$sc" 2>&1); then
+  if grep -q "TRACE STABILITY PASS" "$sc"; then
+    pass "an open trace row survives new events arriving"
+  else
+    pass "trace stability skipped ($(grep -o 'SKIP.*' "$sc" | head -1))"
+  fi
+else
+  fail "an open trace row closed when the trace refreshed"
+  sed -n 's/^/    /p' "$sc" | head -6
+fi
+
+# The window's chrome must stay put while a list scrolls, and a card must
+# not clip the list inside it. Both were broken: the whole document scrolled,
+# and .cd's overflow:hidden squashed a 30-row list down to the five rows that
+# fit, with no scrollbar and no sign the rest existed.
+lc="$SCRATCH/layout.out"
+if (cd app && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron \
+      test/layout-check.js > "$lc" 2>&1); then
+  if grep -q "LAYOUT PASS" "$lc"; then
+    pass "the header, tabs and filters stay put while the list scrolls"
+  else
+    pass "layout check skipped ($(grep -o 'SKIP.*' "$lc" | head -1))"
+  fi
+else
+  fail "the window chrome moved, or a card clipped its list"
+  sed -n 's/^/    /p' "$lc" | head -6
+fi
+
+# The Shell tab in the real window. What it has to prove is the thing that
+# distinguishes it from `ibeji run`: state carries between commands.
+shc="$SCRATCH/shell.out"
+if (cd app && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron \
+      test/shell-check.js > "$shc" 2>&1); then
+  if grep -q "SHELL PASS" "$shc"; then
+    pass "the Shell tab keeps cd and export between commands"
+  else
+    pass "shell check skipped ($(grep -o 'SKIP.*' "$shc" | head -1))"
+  fi
+else
+  fail "the Shell tab did not work in the window"
+  sed -n 's/^/    /p' "$shc" | head -6
+fi
+
 n_classes=$(grep -oE 'classes used +[0-9]+' "$out" | grep -oE '[0-9]+$')
 if [[ -n "$n_classes" && "$n_classes" -ge 30 ]]; then
   pass "all four tabs drew real data ($n_classes design-system classes used)"

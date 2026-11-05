@@ -150,6 +150,15 @@ export interface IbejiBridge {
   pickFolder(): Promise<Result<string | undefined>>;
   /** The command that registers Ìbejì's MCP server with an agent. */
   mcpCommand(): Promise<Result<string>>;
+
+  // --- the Shell tab -------------------------------------------------------
+  shells(): Promise<Result<{ shells: ShellInfo[] }>>;
+  shellOpen(cwd?: string): Promise<Result<{ shell: ShellInfo }>>;
+  shellWrite(id: string, data: string): Promise<Result<void>>;
+  shellRead(id: string, since: number, waitMs: number):
+    Promise<Result<{ output: ShellChunk[]; seq: number; done: boolean }>>;
+  shellInterrupt(id: string): Promise<Result<void>>;
+  shellClose(id: string): Promise<Result<void>>;
   /** A ready-to-paste briefing describing this install to an agent. */
   agentBriefing(): Promise<Result<string>>;
   discard(name: string, path: string): Promise<Result<void>>;
@@ -256,4 +265,21 @@ export interface TraceStats {
   bytes: number;
   maxBytes: number;
   maxAge: number;
+}
+
+/** A shell running on the paired machine. */
+export interface ShellInfo {
+  id: string;
+  shell: string;
+  cwd: string;
+  pid: number;
+  started: string;
+  running: boolean;
+}
+
+/** One chunk of a shell's output. stderr is kept distinct so it can be shown
+ *  differently — a build's warnings should not read as its output. */
+export interface ShellChunk {
+  stream: "stdout" | "stderr";
+  data: string;
 }

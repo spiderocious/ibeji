@@ -5,10 +5,22 @@
  * rule here starts describing how a button or a row looks, it belongs upstream
  * in the design system instead. */
 
+/* The window is a fixed frame, not a document that grows.
+ *
+ * The design system is frozen and sets no height on html/body, which is right
+ * for a page. An app window is not a page: without this the document grows
+ * past the viewport, the whole thing scrolls, and the header and tabs ride
+ * away with the list beneath them. */
+html, body { height: 100%; overflow: hidden; }
+
 .app-shell {
-  min-height: 100vh;
+  /* height, not min-height: the shell IS the viewport. With min-height the
+     document grows past the window and the whole page scrolls, which is what
+     carried the header and tabs away with the list. */
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background: var(--surface-canvas);
 }
 
@@ -35,8 +47,47 @@
 }
 .app-header .legend { margin-left: auto; }
 
+/* On every tab but Devices the header collapses: the machine name and key
+   fingerprint are what you compare when pairing, and fixed furniture above a
+   list the rest of the time. */
+.app-header.is-compact {
+  padding-top: var(--s-2);
+  padding-bottom: var(--s-2);
+  align-items: center;
+}
+.hdr-mini { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+.dev-name-sm {
+  font-family: var(--font-territory);
+  font-size: var(--t-h3);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A view's own controls — scope switcher, filter field, sub-tabs. Outside the
+   scroll area, so scrolling a long list does not carry the filter you are
+   typing into off the top of the window. */
+.app-controls {
+  flex: none;
+  padding: var(--s-3) var(--s-6) 0;
+}
+.app-controls .trc-controls { margin-bottom: var(--s-3); }
+
+/* A card holding a list must size to its content and let .app-main scroll it.
+ *
+ * The design system gives .cd `overflow: hidden` so its rounded corners clip
+ * what is inside, which is right for a card on a page. As a flex child of a
+ * bounded column it also gets squashed to the free space and then CLIPS the
+ * rest of the list — 30 rows rendered, 5 visible, no scrollbar, the other 25
+ * simply gone. flex-shrink: 0 keeps the card its natural height so the rows
+ * reach the scroll container. */
+.app-main > .cd { flex: none; }
+
 .app-main {
   flex: 1;
+  min-height: 0;
   padding: var(--s-5) var(--s-6) var(--s-7);
   overflow-y: auto;
   display: flex;
@@ -283,3 +334,80 @@
 @media (prefers-reduced-motion: reduce) {
   .trc-chev { transition: none; }
 }
+
+/* --- the Shell tab ---------------------------------------------------------
+   A terminal-shaped pane over a long-lived shell on the other machine. Dark,
+   because that is what a terminal is and the contrast is what makes streamed
+   output readable; everything around it stays on the product's paper. */
+
+.sh-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--edge-hair);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--ink-900);
+}
+
+.sh-out {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: var(--s-4);
+  overflow-y: auto;
+  font-family: var(--font-record);
+  font-size: var(--t-record-sm);
+  line-height: 1.55;
+  color: #D7DEDC;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.sh-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-4);
+  border-top: 1px solid rgba(255, 255, 255, .09);
+  background: rgba(255, 255, 255, .03);
+}
+
+.sh-prompt {
+  font-family: var(--font-record);
+  font-size: var(--t-record-sm);
+  color: var(--sea-300);
+  flex: none;
+}
+
+/* Not .fld: that is a form field on paper, and this sits inside the pane. */
+.sh-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  padding: var(--s-2) 0;
+  font-family: var(--font-record);
+  font-size: var(--t-record-sm);
+  color: #E8EDEC;
+  caret-color: var(--sea-300);
+}
+.sh-input::placeholder { color: #6E7A78; }
+.sh-input:disabled { color: #6E7A78; }
+
+.sh-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-4);
+  border-top: 1px solid rgba(255, 255, 255, .07);
+  background: rgba(255, 255, 255, .02);
+}
+.sh-foot .tx-micro { color: #8A9694; }
+
+/* The pane fills the tab rather than sitting in the scrolling column: a
+   terminal scrolls its own output, it does not grow the page. */
+.app-main:has(.sh-pane) { overflow: hidden; }

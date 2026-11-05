@@ -334,3 +334,94 @@ func readOutputFrame(stream link.Stream) (OutputKind, []byte, error) {
 	}
 	return OutputKind(hdr[0]), body, nil
 }
+
+// --- the Shell tab --------------------------------------------------------
+//
+// A long-lived shell on the far machine. Exec cannot back this: it spawns a
+// fresh `zsh -lc` per call, so `cd` and `export` are forgotten the moment it
+// returns, and a terminal that forgets where it is between lines is not a
+// terminal.
+
+// ShellOpen starts a shell on the far machine, in cwd or its home directory.
+func (c *Client) ShellOpen(ctx context.Context, cwd string) (*ShellInfo, error) {
+	resp, stream, err := c.call(ctx, Request{
+		Op: OpShellOpen, Shell: &ShellRequest{Cwd: cwd},
+	}, defaultCallTimeout)
+	if err != nil {
+		return nil, err
+	}
+	defer stream.Close()
+	if resp.Shell == nil || resp.Shell.Session == nil {
+		return nil, fmt.Errorf("remote: the peer opened no shell")
+	}
+	return resp.Shell.Session, nil
+}
+
+// ShellWrite sends a line to a shell.
+func (c *Client) ShellWrite(ctx context.Context, id, data string) error {
+	_, stream, err := c.call(ctx, Request{
+		Op: OpShellWrite, Shell: &ShellRequest{ID: id, Data: data},
+	}, defaultCallTimeout)
+	if err != nil {
+		return err
+	}
+	return stream.Close()
+}
+
+// ShellRead returns output from `since` onward, blocking up to wait.
+//
+// Long-polling rather than a push: a shell is idle most of the time, and a
+// blocking read costs one stream instead of a busy loop. The caller keeps the
+// sequence, so a window that reconnects replays exactly what it missed.
+func (c *Client) ShellRead(ctx context.Context, id string, since int, wait time.Duration) ([]ShellOutput, int, bool, error) {
+	// The call must outlive the long poll, or it times out before the shell
+	// has had a chance to say nothing.
+	timeout := wait + defaultCallTimeout
+	resp, stream, err := c.call(ctx, Request{
+		Op:    OpShellRead,
+		Shell: &ShellRequest{ID: id, Since: since, WaitMS: int(wait / time.Millisecond)},
+	}, timeout)
+	if err != nil {
+		return nil, since, false, err
+	}
+	defer stream.Close()
+	if resp.Shell == nil {
+		return nil, since, false, nil
+	}
+	return resp.Shell.Output, resp.Shell.Seq, resp.Shell.Done, nil
+}
+
+// ShellInterrupt stops the command running in a shell, leaving the shell.
+func (c *Client) ShellInterrupt(ctx context.Context, id string) error {
+	_, stream, err := c.call(ctx, Request{
+		Op: OpShellInterrupt, Shell: &ShellRequest{ID: id},
+	}, defaultCallTimeout)
+	if err != nil {
+		return err
+	}
+	return stream.Close()
+}
+
+// ShellClose ends a shell and everything it started.
+func (c *Client) ShellClose(ctx context.Context, id string) error {
+	_, stream, err := c.call(ctx, Request{
+		Op: OpShellClose, Shell: &ShellRequest{ID: id},
+	}, defaultCallTimeout)
+	if err != nil {
+		return err
+	}
+	return stream.Close()
+}
+
+// ShellList returns the shells open on the far machine.
+func (c *Client) ShellList(ctx context.Context) ([]ShellInfo, error) {
+	resp, stream, err := c.call(ctx, Request{Op: OpShellList}, defaultCallTimeout)
+	if err != nil {
+		return nil, err
+	}
+	defer stream.Close()
+	if resp.Shell == nil {
+		return nil, nil
+	}
+	return resp.Shell.Sessions, nil
+}

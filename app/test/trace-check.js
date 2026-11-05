@@ -10,6 +10,23 @@ const root = join(__dirname, "..");
 require(join(root, "out", "main", "main.js"));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// A script error must end the run, not hang it.
+//
+// executeJavaScript rejects when the injected script throws, and an
+// unhandled rejection in Electron's main process neither prints usefully nor
+// exits — the test sits there until something kills it, and `make smoke`
+// appears to freeze. A broken test should fail in seconds and say why.
+process.on("unhandledRejection", (err) => {
+  console.error("  \u2717 script error in the test:", err && err.message ? err.message : err);
+  process.exit(1);
+});
+const HARD_TIMEOUT_MS = Number(process.env.IBEJI_TEST_TIMEOUT_MS || 90000);
+setTimeout(() => {
+  console.error(`  \u2717 timed out after ${HARD_TIMEOUT_MS}ms`);
+  process.exit(1);
+}, HARD_TIMEOUT_MS).unref();
+
+
 let failed = false;
 const fail = (m) => { console.error("  ✗ " + m); failed = true; };
 

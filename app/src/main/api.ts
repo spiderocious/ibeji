@@ -25,6 +25,8 @@ import type {
   Mode,
   PairingSession,
   SelfInfo,
+  ShellChunk,
+  ShellInfo,
 } from "../shared/types.js";
 
 export type {
@@ -167,6 +169,29 @@ export class ApiClient {
 
   candidates(): Promise<DiscoveryResult> {
     return this.request<DiscoveryResult>("GET", "/v1/discovery");
+  }
+
+  // --- the Shell tab -------------------------------------------------------
+  shells(): Promise<{ shells: ShellInfo[] }> {
+    return this.request("GET", "/v1/shells");
+  }
+  shellOpen(cwd?: string): Promise<{ shell: ShellInfo }> {
+    return this.request("POST", "/v1/shells/open", { cwd: cwd ?? "" });
+  }
+  shellWrite(id: string, data: string): Promise<void> {
+    return this.request("POST", "/v1/shells/write", { id, data });
+  }
+  shellRead(id: string, since: number, waitMs: number):
+    Promise<{ output: ShellChunk[]; seq: number; done: boolean }> {
+    // A long poll. fetch imposes no timeout of its own here, so the request
+    // simply waits as long as the daemon holds it.
+    return this.request("POST", "/v1/shells/read", { id, since, waitMs });
+  }
+  shellInterrupt(id: string): Promise<void> {
+    return this.request("POST", "/v1/shells/interrupt", { id });
+  }
+  shellClose(id: string): Promise<void> {
+    return this.request("POST", "/v1/shells/close", { id });
   }
 
   spaces(): Promise<{ spaces: SpaceStatus[] }> {

@@ -26,6 +26,8 @@ import type {
   TunnelRow,
   Result,
   SelfInfo,
+  ShellChunk,
+  ShellInfo,
   UpdateStatus,
 } from "../shared/types.js";
 
@@ -74,6 +76,15 @@ const bridge = {
   // --- agents --------------------------------------------------------------
   // An MCP server ships with the app, and nothing in the window ever said so.
   mcpCommand: () => invoke<string>("agent:mcp-command"),
+
+  // --- the Shell tab -------------------------------------------------------
+  shells: () => invoke<{ shells: ShellInfo[] }>("shells"),
+  shellOpen: (cwd?: string) => invoke<{ shell: ShellInfo }>("shell:open", cwd),
+  shellWrite: (id: string, data: string) => invoke<void>("shell:write", id, data),
+  shellRead: (id: string, since: number, waitMs: number) =>
+    invoke<{ output: ShellChunk[]; seq: number; done: boolean }>("shell:read", id, since, waitMs),
+  shellInterrupt: (id: string) => invoke<void>("shell:interrupt", id),
+  shellClose: (id: string) => invoke<void>("shell:close", id),
   agentBriefing: () => invoke<string>("agent:briefing"),
   promote: (name: string, path: string) => invoke<void>("spaces:promote", name, path),
   discard: (name: string, path: string) => invoke<void>("spaces:discard", name, path),

@@ -78,6 +78,7 @@ e2e: build
 	./test/e2e-restart.sh
 	./test/e2e-exec.sh
 	./test/e2e-spaces.sh
+	./test/e2e-shell.sh
 	./test/e2e-app.sh
 
 ## smoke: build the window and check it against a running daemon

@@ -57,13 +57,25 @@ const (
 
 	// OpPorts lists what is listening on the far machine.
 	OpPorts Op = "ports.list"
+
+	// The Shell tab's operations: a long-lived shell on the far machine that
+	// keeps its working directory and environment between commands. Exec
+	// cannot back this — it spawns a fresh `zsh -lc` per call, so `cd` and
+	// `export` are forgotten the moment it returns.
+	OpShellOpen      Op = "shell.open"
+	OpShellWrite     Op = "shell.write"
+	OpShellRead      Op = "shell.read"
+	OpShellInterrupt Op = "shell.interrupt"
+	OpShellClose     Op = "shell.close"
+	OpShellList      Op = "shell.list"
 )
 
 // Known reports whether this build understands the op.
 func (o Op) Known() bool {
 	switch o {
 	case OpList, OpStat, OpRead, OpWrite, OpSearch, OpExec, OpInfo, OpCheck,
-		OpPS, OpKill, OpAttach, OpPorts:
+		OpPS, OpKill, OpAttach, OpPorts,
+		OpShellOpen, OpShellWrite, OpShellRead, OpShellInterrupt, OpShellClose, OpShellList:
 		return true
 	default:
 		return false
@@ -82,6 +94,14 @@ func (o Op) Mutating() bool {
 	case OpWrite, OpExec, OpKill:
 		// Killing a process the user started is a side effect on their
 		// machine, so it passes through the permission engine like any other.
+		return true
+	case OpShellOpen, OpShellWrite:
+		// Opening a shell and typing into it run commands as the logged-in
+		// user, so both are gated exactly like exec. Reading the output is
+		// not: it is the result of something already approved, and asking
+		// again to see what you asked for would be absurd. Nor is an
+		// interrupt — a runaway command must be stoppable without walking to
+		// the other machine.
 		return true
 	default:
 		return false
@@ -111,6 +131,9 @@ type Request struct {
 
 	// Check carries the probe target.
 	Check *CheckRequest `json:"check,omitempty"`
+
+	// Shell carries a Shell tab operation.
+	Shell *ShellRequest `json:"shell,omitempty"`
 
 	// ProcessID addresses one process, for kill and attach.
 	ProcessID string `json:"processId,omitempty"`
@@ -214,6 +237,9 @@ type Response struct {
 
 	// Truncated reports that the answer was cut at its limit.
 	Truncated bool `json:"truncated,omitempty"`
+
+	// Shell answers a Shell tab operation.
+	Shell *ShellReply `json:"shell,omitempty"`
 }
 
 // DirEntry is one item in a directory listing.
@@ -337,3 +363,52 @@ var (
 	// ErrMalformed is returned for a request that does not parse.
 	ErrMalformed = errors.New("remote: malformed request")
 )
+
+// ShellRequest is one Shell tab operation.
+type ShellRequest struct {
+	// ID names an existing session. Empty when opening one.
+	ID string `json:"id,omitempty"`
+
+	// Cwd is where a new session starts. Empty means the home directory.
+	Cwd string `json:"cwd,omitempty"`
+
+	// Data is the line to send, for a write.
+	Data string `json:"data,omitempty"`
+
+	// Since is the sequence to read from, for a read. The reader keeps this
+	// rather than the server keeping a cursor, so a window that reconnects
+	// can replay exactly what it missed.
+	Since int `json:"since,omitempty"`
+
+	// WaitMS is how long a read may block for new output before returning
+	// empty. Long-polling: without it a live shell needs a busy loop.
+	WaitMS int `json:"waitMs,omitempty"`
+}
+
+// ShellReply answers a ShellRequest.
+type ShellReply struct {
+	// Session describes the session, on open and list.
+	Session *ShellInfo `json:"session,omitempty"`
+
+	// Sessions is every open shell, for list.
+	Sessions []ShellInfo `json:"sessions,omitempty"`
+
+	// Output is what the shell produced, for a read.
+	Output []ShellOutput `json:"output,omitempty"`
+
+	// Seq is the sequence to ask for next.
+	Seq int `json:"seq,omitempty"`
+
+	// Done reports that the shell has exited.
+	Done bool `json:"done,omitempty"`
+}
+
+// ShellInfo is a session as the window shows it.
+type ShellInfo struct {
+	ID      string    `json:"id"`
+	Shell   string    `json:"shell"`
+	Cwd     string    `json:"cwd"`
+	PID     int       `json:"pid"`
+	Started time.Time `json:"started"`
+	Running bool      `json:"running"`
+}

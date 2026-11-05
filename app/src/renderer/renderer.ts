@@ -38,7 +38,7 @@ declare global {
 
 type Tone = "live" | "attention" | "irreversible";
 
-type Tab = "devices" | "spaces" | "ports" | "trace";
+type Tab = "devices" | "spaces" | "ports" | "trace" | "shell";
 
 interface State {
   tab: Tab;
@@ -54,6 +54,15 @@ interface State {
   traceQuery: string;
   /** Which trace rows are expanded, by id. */
   traceOpen: Set<string>;
+  /** Open rows kept on screen after the trace window scrolled past them. */
+  tracePinned: Map<string, TraceEvent>;
+  /** The Shell tab's sub-tabs, in the order they were opened. */
+  shells: ShellTab[];
+  /** Which sub-tab is showing. */
+  activeShell: string | undefined;
+  /** True while a shell is being opened, so the + cannot be double-pressed. */
+  shellBusy: boolean;
+
   /** Which machines the ports tab is showing. */
   portScope: "all" | "mine" | "theirs";
   /** Free-text filter over ports: matches port number, service or process. */
@@ -81,6 +90,10 @@ const state: State = {
   traceErrorsOnly: false,
   traceQuery: "",
   traceOpen: new Set<string>(),
+  tracePinned: new Map<string, TraceEvent>(),
+  shells: [],
+  activeShell: undefined,
+  shellBusy: false,
   portScope: "all",
   portQuery: "",
   self: undefined,
@@ -93,6 +106,31 @@ const state: State = {
   update: undefined,
   updateBusy: false,
 };
+
+/**
+ * One Shell sub-tab.
+ *
+ * The scrollback lives here rather than being re-fetched: the daemon keeps a
+ * bounded window and the pane should not lose what scrolled past it. `seq` is
+ * how far this tab has read, so a reconnecting window replays exactly what it
+ * missed instead of starting blank or repeating itself.
+ */
+interface ShellTab {
+  id: string;
+  cwd: string;
+  /** Everything the shell has said, as rendered text. */
+  text: string;
+  /** The daemon's next sequence for this shell. */
+  seq: number;
+  /** Commands typed here, newest last, for the up arrow. */
+  history: string[];
+  /** Where the up/down arrows currently sit in history. */
+  historyAt: number;
+  /** Set once the shell has exited. */
+  done: boolean;
+  /** True while a read is in flight, so only one poll runs per tab. */
+  polling: boolean;
+}
 
 // --- helpers ----------------------------------------------------------------
 
@@ -445,6 +483,117 @@ function formatBytes(n: number): string {
  * whose port you are looking at, and which "Link" button does what. The scopes
  * split that; the All tab keeps the device column so duplicates stay legible.
  */
+/**
+ * The Shell tab.
+ *
+ * A terminal-shaped pane over a long-lived shell on the other machine. Not a
+ * TTY: there is no terminal device, so no vim, no top, no password prompts.
+ * What it is, is a shell that remembers — `cd` and `export` carry between
+ * commands, which is the thing `ibeji run` cannot do.
+ */
+function shellControls(): string {
+  const tabs = state.shells
+    .map((t) => {
+      const on = t.id === state.activeShell;
+      const label = t.done ? `${t.id} · ended` : t.id;
+      return `<button class="seg-item${on ? " is-active" : ""}" data-shell-tab="${esc(t.id)}"
+                title="${esc(t.cwd)}">${esc(label)}</button>`;
+    })
+    .join("");
+
+  return `
+    <div class="trc-controls">
+      <div class="seg">${tabs || `<span class="tx-micro" style="padding:0 8px">No shells yet</span>`}</div>
+      <button class="btn btn-secondary btn-sm" data-action="shell-new"${state.shellBusy ? " disabled" : ""}
+              title="Open another shell on the other machine">${state.shellBusy ? "Opening…" : "+"}</button>
+      ${
+        state.activeShell
+          ? `<button class="btn btn-tertiary btn-sm" data-action="shell-interrupt"
+                     title="Stop the running command (Ctrl-C)">Stop</button>
+             <button class="btn btn-tertiary btn-sm" data-action="shell-close"
+                     title="Close this shell and everything it started">Close</button>`
+          : ""
+      }
+    </div>`;
+}
+
+function shellView(): string {
+  const t = state.shells.find((x) => x.id === state.activeShell);
+  if (!t) {
+    return `
+      <div class="es">
+        <div class="es-title">No shell open</div>
+        <div class="es-msg">A shell runs on your other Mac and keeps its working
+        directory and environment between commands — unlike a one-off
+        <code>ibeji run</code>. It is not a full terminal: no vim, no top, no
+        password prompts.</div>
+        <button class="btn btn-primary btn-sm" data-action="shell-new"${state.shellBusy ? " disabled" : ""}>
+          ${state.shellBusy ? "Opening…" : "Open a shell"}
+        </button>
+      </div>`;
+  }
+
+  return `
+    <div class="sh-pane">
+      <pre class="sh-out" id="sh-out">${esc(t.text)}</pre>
+      <div class="sh-input-row">
+        <span class="sh-prompt" aria-hidden="true">$</span>
+        <input class="sh-input" id="sh-input" type="text" autocomplete="off"
+               spellcheck="false" data-shell-input
+               placeholder="${t.done ? "This shell has ended" : "Type a command and press Return"}"
+               ${t.done ? "disabled" : ""}>
+      </div>
+      <div class="sh-foot">
+        <span class="tx-micro">${esc(t.cwd)}</span>
+        <span class="tx-micro">${t.done ? "ended" : "Ctrl-C stops the running command"}</span>
+      </div>
+    </div>`;
+}
+
+/** The ports controls, rendered outside the scroll area so they stay put. */
+function portsControls(): string {
+  const selfName = state.self?.name ?? "";
+  const theirName =
+    state.devices.find((d) => d.name !== selfName)?.name ?? "the other Mac";
+  const mine = state.ports.filter((p) => p.device === selfName);
+  const theirs = state.ports.filter((p) => p.device !== selfName);
+  return `
+    <div class="trc-controls">
+      <div class="seg">
+        <button class="seg-item${state.portScope === "all" ? " is-active" : ""}"
+                data-port-scope="all">All <span class="seg-n">${state.ports.length}</span></button>
+        <button class="seg-item${state.portScope === "mine" ? " is-active" : ""}"
+                data-port-scope="mine">This Mac <span class="seg-n">${mine.length}</span></button>
+        <button class="seg-item${state.portScope === "theirs" ? " is-active" : ""}"
+                data-port-scope="theirs">${esc(theirName)} <span class="seg-n">${theirs.length}</span></button>
+      </div>
+      <input class="fld fld-sm trc-search" type="search" id="port-search"
+             placeholder="Filter by port, service or process…"
+             value="${esc(state.portQuery)}" data-port-query>
+    </div>`;
+}
+
+/** The trace controls, likewise pinned above the scrolling list. */
+function traceControls(): string {
+  return `
+    <div class="trc-controls">
+      <div class="seg">
+        <button class="seg-item${state.traceErrorsOnly ? "" : " is-active"}"
+                data-trace-filter="all">Everything</button>
+        <button class="seg-item${state.traceErrorsOnly ? " is-active" : ""}"
+                data-trace-filter="errors">Failures only</button>
+      </div>
+      <input class="fld fld-sm trc-search" type="search" id="trace-search"
+             placeholder="Filter by call, device, error or payload…"
+             value="${esc(state.traceQuery)}" data-trace-query>
+      ${
+        state.traceOpen.size > 0
+          ? `<button class="btn btn-tertiary btn-sm" data-action="trace-collapse">Collapse all</button>`
+          : ""
+      }
+    </div>`;
+}
+
 function portsView(): string {
   const byPort = new Map(state.tunnels.map((t) => [t.remotePort, t]));
   const selfName = state.self?.name ?? "";
@@ -467,21 +616,6 @@ function portsView(): string {
       )
     : scoped;
 
-  const controls = `
-    <div class="trc-controls">
-      <div class="seg">
-        <button class="seg-item${state.portScope === "all" ? " is-active" : ""}"
-                data-port-scope="all">All <span class="seg-n">${state.ports.length}</span></button>
-        <button class="seg-item${state.portScope === "mine" ? " is-active" : ""}"
-                data-port-scope="mine">This Mac <span class="seg-n">${mine.length}</span></button>
-        <button class="seg-item${state.portScope === "theirs" ? " is-active" : ""}"
-                data-port-scope="theirs">${esc(theirName)} <span class="seg-n">${theirs.length}</span></button>
-      </div>
-      <input class="fld fld-sm trc-search" type="search" id="port-search"
-             placeholder="Filter by port, service or process…"
-             value="${esc(state.portQuery)}" data-port-query>
-    </div>`;
-
   if (rows.length === 0) {
     const why = q
       ? `Nothing matches “${esc(state.portQuery)}”.`
@@ -490,15 +624,11 @@ function portsView(): string {
         : state.portScope === "mine"
           ? "Nothing is listening on this Mac."
           : "No dev servers or databases are running on either machine.";
-    return (
-      controls +
-      `<div class="es"><div class="es-title">Nothing listening</div>
-         <div class="es-msg">${why}</div></div>`
-    );
+    return `<div class="es"><div class="es-title">Nothing listening</div>
+         <div class="es-msg">${why}</div></div>`;
   }
 
   return (
-    controls +
     `<div class="cd"><div class="cd-body" style="padding:0">${rows
       .map((p) => portView(p, byPort.get(p.port), p.device === selfName))
       .join("")}</div></div>` +
@@ -531,12 +661,36 @@ function payloadBlock(label: string, value: unknown): string {
 
 /** A stable key for a row, so an expanded row stays open across the 5s poll. */
 function traceKey(e: TraceEvent, i: number): string {
+  // The daemon's row id when there is one. The index fallback is only for a
+  // peer too old to send ids, and it is unstable by nature — a row keyed by
+  // position changes identity the moment anything is prepended.
   return e.id !== undefined ? String(e.id) : `${e.at}#${e.type}#${i}`;
 }
 
 function traceView(): string {
   const q = state.traceQuery.trim().toLowerCase();
   const all = [...state.trace].reverse();
+
+  // Keep rows you have open, even once the window has moved past them.
+  //
+  // The trace is the newest 60 events. On a busy daemon that window turns
+  // over in seconds, so a row opened to read its payload was simply gone by
+  // the next poll — it looked like the row had slammed shut on its own, and
+  // reading anything during activity was impossible. Pinning them keeps the
+  // thing you are looking at on screen until you close it.
+  for (const e of all) {
+    const k = traceKey(e, -1);
+    if (state.traceOpen.has(k)) state.tracePinned.set(k, e);
+  }
+  for (const [k, e] of state.tracePinned) {
+    if (!state.traceOpen.has(k)) {
+      state.tracePinned.delete(k);
+      continue;
+    }
+    if (!all.some((x) => traceKey(x, -1) === k)) all.push(e);
+  }
+  // Newest first, with any pinned stragglers back in their place.
+  all.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
 
   // Match across everything the row can show, payloads included — the point
   // of a trace is finding the one call that went wrong.
@@ -551,35 +705,14 @@ function traceView(): string {
       })
     : all;
 
-  const controls = `
-    <div class="trc-controls">
-      <div class="seg">
-        <button class="seg-item${state.traceErrorsOnly ? "" : " is-active"}"
-                data-trace-filter="all">Everything</button>
-        <button class="seg-item${state.traceErrorsOnly ? " is-active" : ""}"
-                data-trace-filter="errors">Failures only</button>
-      </div>
-      <input class="fld fld-sm trc-search" type="search" id="trace-search"
-             placeholder="Filter by call, device, error or payload…"
-             value="${esc(state.traceQuery)}" data-trace-query>
-      ${
-        state.traceOpen.size > 0
-          ? `<button class="btn btn-tertiary btn-sm" data-action="trace-collapse">Collapse all</button>`
-          : ""
-      }
-    </div>`;
-
   if (rows.length === 0) {
     const why = q
       ? `Nothing matches “${esc(state.traceQuery)}”.`
       : state.traceErrorsOnly
         ? "Nothing has failed in the last hour."
         : "No activity in the last hour.";
-    return (
-      controls +
-      `<div class="es"><div class="es-title">Nothing to show</div>
-         <div class="es-msg">${why}</div></div>`
-    );
+    return `<div class="es"><div class="es-title">Nothing to show</div>
+         <div class="es-msg">${why}</div></div>`;
   }
 
   const count =
@@ -588,7 +721,6 @@ function traceView(): string {
       : "";
 
   return (
-    controls +
     count +
     `<div class="cd"><div class="cd-body" style="padding:0">${rows
       .map((e, i) => {
@@ -636,6 +768,7 @@ function tabsView(): string {
     ["spaces", "Spaces"],
     ["ports", "Ports"],
     ["trace", "Trace"],
+    ["shell", "Shell"],
   ];
   return `<div class="seg">${tabs
     .map(
@@ -700,13 +833,24 @@ function render(): void {
   const self = state.self;
   const paired = state.devices[0];
 
+  // This machine's name and key fingerprint are context for the Devices tab,
+  // where you are comparing two machines. On Ports, Spaces, Trace or Shell
+  // they are three lines of fixed furniture above the thing you came to read,
+  // so they collapse to the status chips alone.
+  const onDevices = state.tab === "devices";
   const header = `
-    <header class="app-header">
-      <div>
-        <div class="tx-overline">This device</div>
-        <div class="dev-name">${esc(self?.name ?? "…")}</div>
-        <div class="dev-addr">${esc(self?.fingerprint ?? "")}</div>
-      </div>
+    <header class="app-header${onDevices ? "" : " is-compact"}">
+      ${
+        onDevices
+          ? `<div>
+               <div class="tx-overline">This device</div>
+               <div class="dev-name">${esc(self?.name ?? "…")}</div>
+               <div class="dev-addr">${esc(self?.fingerprint ?? "")}</div>
+             </div>`
+          : `<div class="hdr-mini">
+               <span class="dev-name-sm">${esc(self?.name ?? "…")}</span>
+             </div>`
+      }
       <div class="legend">
         <span class="legend-daemon"><span class="legend-sw" style="background:var(--live)"></span>
           <span class="tx-micro">daemon · alive</span></span>
@@ -751,6 +895,8 @@ function render(): void {
     body = portsView();
   } else if (state.tab === "trace") {
     body = traceView();
+  } else if (state.tab === "shell") {
+    body = shellView();
   } else if (state.pairing) {
     body = pairingView(state.pairing);
   } else if (paired) {
@@ -794,12 +940,23 @@ function render(): void {
       </div>`;
   }
 
+  // A view's own controls sit between the tabs and the scroll area, not
+  // inside it. Scrolling a long list must not carry the filter you are
+  // typing into off the top of the window.
+  let controls = "";
+  if (state.devices.length > 0) {
+    if (state.tab === "ports") controls = portsControls();
+    else if (state.tab === "trace") controls = traceControls();
+    else if (state.tab === "shell") controls = shellControls();
+  }
+
   root.innerHTML = `
     <div class="app-titlebar-pad"></div>
     ${header}
     ${state.devices.length > 0 ? `<div class="app-tabs">${tabsView()}</div>` : ""}
     ${updateView()}
     ${noticeView()}
+    ${controls ? `<div class="app-controls">${controls}</div>` : ""}
     <main class="app-main">${body}</main>`;
 }
 
@@ -1140,6 +1297,160 @@ async function agentSetup(): Promise<void> {
     .catch(() => notify("Could not copy to the clipboard.", "attention"));
 }
 
+// --- the Shell tab ---------------------------------------------------------
+
+/** Open another shell on the other machine and switch to it. */
+async function openShell(): Promise<void> {
+  if (state.shellBusy) return;
+  state.shellBusy = true;
+  render();
+  try {
+    const res = await window.ibeji.shellOpen();
+    const info = unwrap(res);
+    if (!info) {
+      notify(res.ok ? "Could not open a shell." : res.error.message, "attention");
+      return;
+    }
+    const tab: ShellTab = {
+      id: info.shell.id,
+      cwd: info.shell.cwd,
+      text: "",
+      seq: 0,
+      history: [],
+      historyAt: -1,
+      done: false,
+      polling: false,
+    };
+    state.shells.push(tab);
+    state.activeShell = tab.id;
+    render();
+    focusShellInput();
+    void pollShell(tab.id);
+  } finally {
+    state.shellBusy = false;
+    render();
+    focusShellInput();
+  }
+}
+
+/**
+ * Follow one shell's output.
+ *
+ * A long poll rather than a timer: a shell is idle most of the time, and the
+ * daemon holds the request until something is said. One poll per tab, so
+ * switching tabs does not stack readers on the same shell.
+ */
+async function pollShell(id: string): Promise<void> {
+  const tab = state.shells.find((t) => t.id === id);
+  if (!tab || tab.polling) return;
+  tab.polling = true;
+  try {
+    while (state.shells.some((t) => t.id === id) && !tab.done) {
+      const res = await window.ibeji.shellRead(id, tab.seq, 8000);
+      const got = unwrap(res);
+      if (!got) {
+        // The link dropped or the shell is gone. Say so in the pane rather
+        // than leaving it looking merely quiet.
+        if (!res.ok && res.error.code !== "peer_offline") {
+          tab.text += `\n[${res.error.message}]\n`;
+          tab.done = true;
+          render();
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 1500));
+        continue;
+      }
+      if (got.output.length > 0) {
+        for (const chunk of got.output) tab.text += chunk.data;
+        tab.seq = got.seq;
+        // Only redraw when this tab is the one on screen.
+        if (state.tab === "shell" && state.activeShell === id) {
+          render();
+          scrollShellToBottom();
+          focusShellInput();
+        }
+      } else {
+        tab.seq = got.seq;
+      }
+      if (got.done) {
+        tab.done = true;
+        tab.text += "\n[the shell ended]\n";
+        render();
+        return;
+      }
+    }
+  } finally {
+    tab.polling = false;
+  }
+}
+
+/** Send what was typed, echoing it so the pane reads like a transcript. */
+async function sendShellLine(line: string): Promise<void> {
+  const tab = state.shells.find((t) => t.id === state.activeShell);
+  if (!tab || tab.done) return;
+  const cmd = line.trim();
+
+  // Echo the command. Without a PTY the shell does not echo what it was
+  // given, so a pane showing only output reads as though it answered a
+  // question nobody asked.
+  tab.text += (tab.text.endsWith("\n") || tab.text === "" ? "" : "\n") + "$ " + line + "\n";
+  if (cmd !== "") {
+    tab.history.push(line);
+    if (tab.history.length > 200) tab.history.shift();
+  }
+  tab.historyAt = -1;
+  render();
+  scrollShellToBottom();
+  focusShellInput();
+
+  const res = await window.ibeji.shellWrite(tab.id, line);
+  if (!res.ok) {
+    tab.text += `[${res.error.message}]\n`;
+    render();
+    scrollShellToBottom();
+  }
+  void pollShell(tab.id);
+}
+
+async function interruptShell(): Promise<void> {
+  const tab = state.shells.find((t) => t.id === state.activeShell);
+  if (!tab) return;
+  const res = await window.ibeji.shellInterrupt(tab.id);
+  if (!res.ok) notify(res.error.message, "attention");
+  else {
+    tab.text += "^C\n";
+    render();
+    scrollShellToBottom();
+    focusShellInput();
+  }
+}
+
+async function closeShell(): Promise<void> {
+  const tab = state.shells.find((t) => t.id === state.activeShell);
+  if (!tab) return;
+  const res = await window.ibeji.shellClose(tab.id);
+  if (!res.ok) {
+    notify(res.error.message, "attention");
+    return;
+  }
+  state.shells = state.shells.filter((t) => t.id !== tab.id);
+  state.activeShell = state.shells[state.shells.length - 1]?.id;
+  render();
+  focusShellInput();
+}
+
+function scrollShellToBottom(): void {
+  const el = document.getElementById("sh-out");
+  if (el) el.scrollTop = el.scrollHeight;
+}
+
+/** Keep the caret in the shell: a terminal you have to click into is wrong. */
+function focusShellInput(): void {
+  if (state.tab !== "shell") return;
+  const el = document.getElementById("sh-input") as HTMLInputElement | null;
+  if (el && document.activeElement !== el) el.focus();
+}
+
 /**
  * Check GitHub for a newer release.
  *
@@ -1207,6 +1518,15 @@ document.addEventListener("click", (e) => {
     if (state.traceOpen.has(traceRow)) state.traceOpen.delete(traceRow);
     else state.traceOpen.add(traceRow);
     render();
+    return;
+  }
+
+  const shellTab = el.closest("[data-shell-tab]")?.getAttribute("data-shell-tab");
+  if (shellTab) {
+    state.activeShell = shellTab;
+    render();
+    focusShellInput();
+    void pollShell(shellTab);
     return;
   }
 
@@ -1286,7 +1606,17 @@ document.addEventListener("click", (e) => {
   switch (target.getAttribute("data-action")) {
     case "trace-collapse":
       state.traceOpen.clear();
+      state.tracePinned.clear();
       render();
+      break;
+    case "shell-new":
+      void openShell();
+      break;
+    case "shell-interrupt":
+      void interruptShell();
+      break;
+    case "shell-close":
+      void closeShell();
       break;
     case "create-space":
       void createSpace();
@@ -1345,6 +1675,57 @@ document.addEventListener("input", (e) => {
   if (again) {
     again.focus();
     if (caret !== null) again.setSelectionRange(caret, caret);
+  }
+});
+
+// The Shell tab's keyboard.
+//
+// Return sends, Ctrl-C interrupts, and the arrows walk history — the three
+// things a terminal does that a text field does not. Bound at the document
+// so the handler survives the re-render after every keystroke.
+document.addEventListener("keydown", (e) => {
+  const el = e.target as HTMLInputElement | null;
+  if (!el || !el.hasAttribute("data-shell-input")) return;
+
+  // Ctrl-C with no selection is an interrupt, not a copy. With a selection it
+  // is a copy, because taking that away would be worse than the alternative.
+  if (e.key === "c" && e.ctrlKey && !window.getSelection()?.toString()) {
+    e.preventDefault();
+    void interruptShell();
+    return;
+  }
+
+  const tab = state.shells.find((t) => t.id === state.activeShell);
+  if (!tab) return;
+
+  if (e.key === "Enter") {
+    e.preventDefault();
+    const line = el.value;
+    el.value = "";
+    void sendShellLine(line);
+    return;
+  }
+
+  if (e.key === "ArrowUp") {
+    if (tab.history.length === 0) return;
+    e.preventDefault();
+    tab.historyAt = tab.historyAt < 0 ? tab.history.length - 1 : Math.max(0, tab.historyAt - 1);
+    el.value = tab.history[tab.historyAt] ?? "";
+    el.setSelectionRange(el.value.length, el.value.length);
+    return;
+  }
+
+  if (e.key === "ArrowDown") {
+    if (tab.historyAt < 0) return;
+    e.preventDefault();
+    tab.historyAt += 1;
+    if (tab.historyAt >= tab.history.length) {
+      tab.historyAt = -1;
+      el.value = "";
+    } else {
+      el.value = tab.history[tab.historyAt] ?? "";
+    }
+    el.setSelectionRange(el.value.length, el.value.length);
   }
 });
 

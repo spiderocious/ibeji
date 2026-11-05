@@ -29,6 +29,8 @@ func pair(t *testing.T, mode permission.Mode) (*Client, *permission.Engine) {
 	}
 	server := NewServer(nil, engine, quiet())
 	server.PeerName = func() string { return "Laptop" }
+	server.Shells = NewShellManager()
+	t.Cleanup(server.Shells.CloseAll)
 
 	fabric := link.NewMemoryFabric()
 	ln, err := fabric.Listen("desktop")
@@ -339,5 +341,131 @@ func TestRoundTripDetach(t *testing.T) {
 	}
 	if started.PID == 0 {
 		t.Error("a detached command returned no pid")
+	}
+}
+
+// --- the Shell tab over the link ------------------------------------------
+
+// readShell follows a remote shell from the live edge, returning what it says.
+func readShell(t *testing.T, c *Client, id string, since int, want string, budget time.Duration) (string, int) {
+	t.Helper()
+	var sb strings.Builder
+	deadline := time.Now().Add(budget)
+	for time.Now().Before(deadline) {
+		out, next, done := func() ([]ShellOutput, int, bool) {
+			o, n, d, err := c.ShellRead(context.Background(), id, since, 400*time.Millisecond)
+			if err != nil {
+				t.Fatalf("ShellRead: %v", err)
+			}
+			return o, n, d
+		}()
+		since = next
+		for _, o := range out {
+			sb.WriteString(o.Data)
+		}
+		if strings.Contains(sb.String(), want) || done {
+			return sb.String(), since
+		}
+	}
+	return sb.String(), since
+}
+
+// The point of a remote shell: state has to carry across commands. If it did
+// not, exec would already be enough and this whole path would be redundant.
+func TestRoundTripShellKeepsState(t *testing.T) {
+	c, _ := pair(t, permission.ModeBypass)
+
+	sess, err := c.ShellOpen(context.Background(), "")
+	if err != nil {
+		t.Fatalf("ShellOpen: %v", err)
+	}
+	if sess.ID == "" || sess.PID == 0 {
+		t.Fatalf("ShellOpen returned an empty session: %+v", sess)
+	}
+	defer c.ShellClose(context.Background(), sess.ID)
+
+	_, seq, _, err := c.ShellRead(context.Background(), sess.ID, 0, 1500*time.Millisecond)
+	if err != nil {
+		t.Fatalf("first read: %v", err)
+	}
+
+	if err := c.ShellWrite(context.Background(), sess.ID, "cd /tmp"); err != nil {
+		t.Fatalf("ShellWrite cd: %v", err)
+	}
+	if err := c.ShellWrite(context.Background(), sess.ID, "pwd"); err != nil {
+		t.Fatalf("ShellWrite pwd: %v", err)
+	}
+	got, seq := readShell(t, c, sess.ID, seq, "/tmp", 10*time.Second)
+	if !strings.Contains(got, "/tmp") {
+		t.Fatalf("cd did not carry across the link:\n%q", got)
+	}
+
+	if err := c.ShellWrite(context.Background(), sess.ID, "export RT_VAR=carried"); err != nil {
+		t.Fatalf("ShellWrite export: %v", err)
+	}
+	if err := c.ShellWrite(context.Background(), sess.ID, "echo \"[$RT_VAR]\""); err != nil {
+		t.Fatalf("ShellWrite echo: %v", err)
+	}
+	got, _ = readShell(t, c, sess.ID, seq, "[carried]", 10*time.Second)
+	if !strings.Contains(got, "[carried]") {
+		t.Fatalf("an exported variable did not carry across the link:\n%q", got)
+	}
+}
+
+// Several shells at once, because the tab has sub-tabs.
+func TestRoundTripShellListAndClose(t *testing.T) {
+	c, _ := pair(t, permission.ModeBypass)
+	ctx := context.Background()
+
+	a, err := c.ShellOpen(ctx, "")
+	if err != nil {
+		t.Fatalf("open a: %v", err)
+	}
+	b, err := c.ShellOpen(ctx, "/tmp")
+	if err != nil {
+		t.Fatalf("open b: %v", err)
+	}
+	if a.ID == b.ID {
+		t.Fatal("two shells share an id")
+	}
+
+	list, err := c.ShellList(ctx)
+	if err != nil {
+		t.Fatalf("ShellList: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("ShellList returned %d shells, want 2", len(list))
+	}
+
+	if err := c.ShellClose(ctx, a.ID); err != nil {
+		t.Fatalf("ShellClose: %v", err)
+	}
+	list, _ = c.ShellList(ctx)
+	if len(list) != 1 || list[0].ID != b.ID {
+		t.Fatalf("after closing a, the list is %+v", list)
+	}
+	_ = c.ShellClose(ctx, b.ID)
+}
+
+// Prompt mode must gate what a shell runs, exactly as it gates exec.
+// A shell that bypassed the permission engine would be a hole straight
+// through it.
+func TestRoundTripShellIsGatedInPromptMode(t *testing.T) {
+	c, engine := pair(t, permission.ModePrompt)
+	ctx := context.Background()
+
+	// Decline whatever is asked.
+	go func() {
+		deadline := time.Now().Add(8 * time.Second)
+		for time.Now().Before(deadline) {
+			for _, p := range engine.Pending() {
+				_ = engine.Answer(p.ID, false, false)
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}()
+
+	if _, err := c.ShellOpen(ctx, ""); err == nil {
+		t.Fatal("opening a shell was allowed in Prompt mode without approval")
 	}
 }

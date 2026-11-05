@@ -170,6 +170,7 @@ func run(logger *slog.Logger, apiAddr string, peerPort int, noMDNS bool, instanc
 	server.RegisterProcessRoutes(d, saved)
 	server.RegisterPortRoutes(d)
 	server.RegisterTransferRoutes(d)
+	api.RegisterShellRoutes(server, d)
 	// The barrier: exec with afterSync waits here before anything runs.
 	server.Barrier = d.WaitForPeerSync
 	if err := server.Start(apiAddr); err != nil {

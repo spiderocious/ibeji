@@ -50,6 +50,11 @@ type Store struct {
 	self *Identity
 	name string
 	peer *Peer
+
+	// secrets persists the pinned peer across restarts. Nil in tests that
+	// build a store with NewStore and do not care about durability; the
+	// daemon always uses LoadStore, which sets it.
+	secrets SecretStore
 }
 
 // NewStore builds a store around this device's identity and name.
@@ -114,6 +119,9 @@ func (s *Store) Pin(pub ed25519.PublicKey, name, addr string) (*Peer, error) {
 			if addr != "" {
 				s.peer.LastAddress = addr
 			}
+			if err := savePeer(s.secrets, s.peer); err != nil {
+				return nil, err
+			}
 			cp := *s.peer
 			return &cp, nil
 		}
@@ -121,13 +129,21 @@ func (s *Store) Pin(pub ed25519.PublicKey, name, addr string) (*Peer, error) {
 	}
 	stored := make(ed25519.PublicKey, len(pub))
 	copy(stored, pub)
-	s.peer = &Peer{
+	peer := &Peer{
 		PublicKey:   stored,
 		Name:        name,
 		LastAddress: addr,
 		PairedAt:    time.Now(),
 	}
-	cp := *s.peer
+	// Persist BEFORE accepting it in memory. A pin that reports success and
+	// then vanishes on restart is worse than one that fails loudly: the user
+	// believes the machines are paired and finds out they are not the next
+	// morning, with nothing in any log to say why.
+	if err := savePeer(s.secrets, peer); err != nil {
+		return nil, err
+	}
+	s.peer = peer
+	cp := *peer
 	return &cp, nil
 }
 
@@ -156,6 +172,12 @@ func (s *Store) Unpair() error {
 	defer s.mu.Unlock()
 	if s.peer == nil {
 		return ErrNotPaired
+	}
+	// Clear the stored copy first. If this fails the peer stays pinned, which
+	// is the safe direction: an unpair that forgets in memory but not on disk
+	// would silently come back on the next restart.
+	if err := savePeer(s.secrets, nil); err != nil {
+		return err
 	}
 	s.peer = nil
 	return nil

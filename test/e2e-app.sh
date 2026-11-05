@@ -13,6 +13,8 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=test/lib-cleanup.sh
+source "$ROOT/test/lib-cleanup.sh"
 SCRATCH="${1:-$(mktemp -d -t ibeji-e2e-app)}"
 A_PORT=${IBEJI_E2E_ALPHA_PORT:-17769}
 B_PORT=${IBEJI_E2E_BETA_PORT:-17770}
@@ -28,8 +30,7 @@ FAILED=0
 cleanup() {
   for inst in app-a app-b; do
     [[ -f "$SCRATCH/$inst.pid" ]] && kill "$(cat "$SCRATCH/$inst.pid")" 2>/dev/null
-    security delete-generic-password -s "com.ibeji.daemon.$inst" >/dev/null 2>&1
-    rm -rf "$HOME/.ibeji/instances/$inst"
+    forget_instance "$inst"
   done
 }
 trap cleanup EXIT

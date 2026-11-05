@@ -306,7 +306,12 @@ func (s *Server) Stop(ctx context.Context) error {
 func (s *Server) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		rec := &statusRecorder{
+			ResponseWriter: w,
+			status:         http.StatusOK,
+			logger:         s.Logger,
+			route:          r.Method + " " + r.URL.Path,
+		}
 
 		defer func() {
 			if v := recover(); v != nil {
@@ -327,6 +332,11 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 					Status:     rec.status,
 					Code:       rec.code,
 					DurationMS: time.Since(start).Milliseconds(),
+					// The cause, not just the code. `ibeji trace --errors`
+					// is the first thing anyone runs when something breaks,
+					// and until now it showed the stable code with the actual
+					// reason stripped out.
+					Err: causeOf(rec),
 				})
 			}
 		}()
@@ -339,6 +349,19 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(rec, r)
 	})
+}
+
+// causeOf renders the underlying error for the trace, or "" when the call
+// succeeded or the mapped message already says everything.
+func causeOf(rec *statusRecorder) string {
+	if rec.cause == nil {
+		return ""
+	}
+	cause := rec.cause.Error()
+	if e := AsError(rec.cause); e != nil && e.Message == cause {
+		return ""
+	}
+	return cause
 }
 
 // authorised checks the bearer token in constant time.
@@ -373,6 +396,22 @@ type statusRecorder struct {
 	status int
 	code   Code
 	wrote  bool
+
+	// logger and route let WriteError report the *cause* of a failure.
+	//
+	// Without these the API was structurally unable to explain itself: every
+	// error was mapped to a stable code for the caller and the underlying
+	// error was dropped on the floor, so a daemon returning "peer_offline"
+	// gave no way — in any log, trace or response — to find out whether the
+	// dial failed, the handshake failed, or the peer answered something
+	// unexpected. Diagnosing it needed a custom Go program. That is a
+	// diagnosis bug, and it belongs here rather than in each handler, so
+	// every endpoint gains it at once.
+	logger *slog.Logger
+	route  string
+
+	// cause is the unmapped error, kept for the trace.
+	cause error
 }
 
 func (w *statusRecorder) WriteHeader(status int) {
@@ -419,6 +458,23 @@ func WriteError(w http.ResponseWriter, err error) {
 	e := AsError(err)
 	if rec, ok := w.(*statusRecorder); ok {
 		rec.code = e.Code
+		rec.cause = err
+
+		// Log the cause, once, where it happened. The response still carries
+		// only the stable code and message — a caller must not have to parse
+		// Go error strings — but the machine that failed keeps the detail.
+		if rec.logger != nil {
+			cause := err.Error()
+			if cause != e.Message {
+				// Only worth saying when the mapping actually hid something.
+				rec.logger.Warn("api: request failed",
+					"route", rec.route, "code", string(e.Code),
+					"message", e.Message, "cause", cause)
+			} else {
+				rec.logger.Debug("api: request failed",
+					"route", rec.route, "code", string(e.Code), "message", e.Message)
+			}
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(e.Code.Status())

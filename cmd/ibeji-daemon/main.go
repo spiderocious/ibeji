@@ -113,6 +113,16 @@ func run(logger *slog.Logger, apiAddr string, peerPort int, noMDNS bool, instanc
 		"name", d.Self().Name,
 		"fingerprint", d.Self().Fingerprint,
 		"paired", d.Self().Paired)
+	// Name the restored peer. "paired=true" alone cannot distinguish a
+	// pairing that came back from one that was never there, which is the
+	// exact ambiguity that made losing the pin hard to spot in the log.
+	if peer := d.Store().Peer(); peer != nil {
+		logger.Info("daemon: pairing restored",
+			"peer", peer.Name,
+			"address", peer.LastAddress,
+			"fingerprint", peer.Fingerprint(),
+			"pairedAt", peer.PairedAt.Format(time.RFC3339))
+	}
 
 	// Listen for the peer before advertising, so a device that answers our
 	// advertisement finds us already accepting.

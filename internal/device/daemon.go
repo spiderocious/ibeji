@@ -141,10 +141,18 @@ func New(opts Options) (*Daemon, error) {
 
 	spaces := space.NewManager(name)
 
+	// LoadStore, not NewStore: it restores the pinned peer from the keychain
+	// so a daemon that restarts comes back paired. NewStore keeps no record,
+	// which is why pairing used to vanish on every restart.
+	store, err := identity.LoadStore(id, name, opts.Secrets)
+	if err != nil {
+		return nil, err
+	}
+
 	daemon := &Daemon{
 		Version:  opts.Version,
 		Logger:   logger,
-		store:    identity.NewStore(id, name),
+		store:    store,
 		secrets:  opts.Secrets,
 		pairer:   link.NewPairer(id, name),
 		registry: registry,

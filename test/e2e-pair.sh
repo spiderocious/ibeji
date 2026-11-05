@@ -17,6 +17,8 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=test/lib-cleanup.sh
+source "$ROOT/test/lib-cleanup.sh"
 SCRATCH="${1:-$(mktemp -d -t ibeji-e2e)}"
 # High ports, away from the daemon's real 7749, so a running Ìbejì does not
 # collide with the test — and the test does not have to kill the user's daemon.
@@ -38,8 +40,8 @@ cleanup() {
     fi
   done
   # Leave no test identities in the real keychain.
-  security delete-generic-password -s com.ibeji.daemon.e2e-alpha >/dev/null 2>&1
-  security delete-generic-password -s com.ibeji.daemon.e2e-beta  >/dev/null 2>&1
+  forget_instance e2e-alpha
+  forget_instance e2e-beta
   rm -rf "$HOME/.ibeji/instances/e2e-alpha" "$HOME/.ibeji/instances/e2e-beta"
 }
 trap cleanup EXIT

@@ -49,7 +49,8 @@ type Env struct {
 // Commands returns every subcommand, in the order help lists them.
 func Commands() []*Command {
 	return []*Command{
-		cmdDevices, cmdInfo, cmdLs, cmdCat, cmdGrep, cmdRun, cmdSpaces,
+		cmdDevices, cmdPair, cmdInfo, cmdLs, cmdCat, cmdGrep, cmdRun, cmdSpaces,
+		cmdRules, cmdPrompts,
 		cmdPorts, cmdTunnel, cmdCp, cmdOpen, cmdPad,
 		cmdPs, cmdKill, cmdCheck, cmdDoctor, cmdTrace, cmdHelpJSON,
 		cmdInstall,
@@ -539,9 +540,12 @@ var cmdTrace = &Command{
 
 var cmdSpaces = &Command{
 	Name:    "spaces",
-	Usage:   "ibeji spaces [name]",
+	Usage:   "ibeji spaces [name] | create <name> <folder> | pause|resume|leave|delete <name> | wait <name>",
 	Summary: "Shared folders, their sync state and any conflicts",
 	Run: func(ctx context.Context, env *Env, args []string) error {
+		if handled, err := spaceSub(ctx, env, args); handled {
+			return err
+		}
 		if len(args) > 0 {
 			return showSpace(ctx, env, args[0])
 		}
@@ -562,7 +566,13 @@ var cmdSpaces = &Command{
 			return err
 		}
 		if len(out.Spaces) == 0 {
-			fmt.Fprintln(env.Out, "No spaces. Create one in the Ìbejì window.")
+			// Name the command that actually works. This used to read
+			// "Create one in the Ìbejì window" — which the window could not
+			// do either, sending anyone who followed it nowhere.
+			fmt.Fprintln(env.Out, "No spaces yet. Create one with:")
+			fmt.Fprintln(env.Out, "  ibeji spaces create <name> <folder> --role master")
+			fmt.Fprintln(env.Out, "then on the other machine:")
+			fmt.Fprintln(env.Out, "  ibeji spaces create <name> <folder> --role replica")
 			return nil
 		}
 		w := tabwriter.NewWriter(env.Out, 0, 0, 2, ' ', 0)

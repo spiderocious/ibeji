@@ -139,6 +139,19 @@ export interface IbejiBridge {
 
   spaces(): Promise<Result<{ spaces: SpaceStatus[] }>>;
   promote(name: string, path: string): Promise<Result<void>>;
+  /** Create a space from a local folder. The daemon may return a .git warning. */
+  createSpace(opts: {
+    name: string;
+    path: string;
+    role: "master" | "replica";
+    mode: "two-way" | "mirror";
+  }): Promise<Result<{ warning?: string }>>;
+  /** Ask the user for a folder, using the OS picker. Undefined if cancelled. */
+  pickFolder(): Promise<Result<string | undefined>>;
+  /** The command that registers Ìbejì's MCP server with an agent. */
+  mcpCommand(): Promise<Result<string>>;
+  /** A ready-to-paste briefing describing this install to an agent. */
+  agentBriefing(): Promise<Result<string>>;
   discard(name: string, path: string): Promise<Result<void>>;
 
   ports(): Promise<Result<{ ports: PortRow[]; meta: PortMeta }>>;
@@ -214,6 +227,8 @@ export interface PendingPrompt {
 
 /** One recorded thing the daemon did. */
 export interface TraceEvent {
+  /** The daemon's row id. Used to key an expanded row open across refreshes. */
+  id?: number;
   at: string;
   type: string;
   device?: string;
@@ -223,6 +238,16 @@ export interface TraceEvent {
   /** Names the likely cause; the field that saves a round of guessing. */
   hint?: string;
   durationMs?: number;
+
+  /**
+   * The call's payload and result, as the daemon recorded them.
+   *
+   * These were always on the wire and the window threw them away, so the
+   * trace could say a call failed but never what it was called with — the one
+   * thing you need. Both are already redacted daemon-side.
+   */
+  request?: unknown;
+  response?: unknown;
 }
 
 /** How much the trace is holding, and its limits. */

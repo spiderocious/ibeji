@@ -50,6 +50,14 @@ interface State {
   prompts: PendingPrompt[];
   trace: TraceEvent[];
   traceErrorsOnly: boolean;
+  /** Free-text filter over the trace: matches type, device, error or payload. */
+  traceQuery: string;
+  /** Which trace rows are expanded, by id. */
+  traceOpen: Set<string>;
+  /** Which machines the ports tab is showing. */
+  portScope: "all" | "mine" | "theirs";
+  /** Free-text filter over ports: matches port number, service or process. */
+  portQuery: string;
   devices: Device[];
   candidates: Candidate[];
   hint: string | undefined;
@@ -71,6 +79,10 @@ const state: State = {
   prompts: [],
   trace: [],
   traceErrorsOnly: false,
+  traceQuery: "",
+  traceOpen: new Set<string>(),
+  portScope: "all",
+  portQuery: "",
   self: undefined,
   devices: [],
   candidates: [],
@@ -425,43 +437,195 @@ function formatBytes(n: number): string {
  * Oldest first, because a trace reads like a story. The hint is the part that
  * saves a round of guessing, so it is never collapsed away.
  */
-function traceView(): string {
-  const rows = [...state.trace].reverse();
-  const filter = `
-    <div style="display:flex;gap:var(--s-2);margin-bottom:var(--s-4)">
-      <button class="btn btn-${state.traceErrorsOnly ? "secondary" : "primary"} btn-sm"
-        data-trace-filter="all">Everything</button>
-      <button class="btn btn-${state.traceErrorsOnly ? "primary" : "secondary"} btn-sm"
-        data-trace-filter="errors">Failures only</button>
+/**
+ * Port Lens.
+ *
+ * Both machines routinely listen on the same port numbers — ARDAgent on 3283,
+ * a dev server on 5000 — so a single flat list makes it genuinely hard to tell
+ * whose port you are looking at, and which "Link" button does what. The scopes
+ * split that; the All tab keeps the device column so duplicates stay legible.
+ */
+function portsView(): string {
+  const byPort = new Map(state.tunnels.map((t) => [t.remotePort, t]));
+  const selfName = state.self?.name ?? "";
+  const theirName =
+    state.devices.find((d) => d.name !== selfName)?.name ?? "the other Mac";
+
+  const mine = state.ports.filter((p) => p.device === selfName);
+  const theirs = state.ports.filter((p) => p.device !== selfName);
+
+  const scoped =
+    state.portScope === "mine" ? mine : state.portScope === "theirs" ? theirs : state.ports;
+
+  const q = state.portQuery.trim().toLowerCase();
+  const rows = q
+    ? scoped.filter((p) =>
+        [String(p.port), p.service, p.process, p.device]
+          .join(" ")
+          .toLowerCase()
+          .includes(q),
+      )
+    : scoped;
+
+  const controls = `
+    <div class="trc-controls">
+      <div class="seg">
+        <button class="seg-item${state.portScope === "all" ? " is-active" : ""}"
+                data-port-scope="all">All <span class="seg-n">${state.ports.length}</span></button>
+        <button class="seg-item${state.portScope === "mine" ? " is-active" : ""}"
+                data-port-scope="mine">This Mac <span class="seg-n">${mine.length}</span></button>
+        <button class="seg-item${state.portScope === "theirs" ? " is-active" : ""}"
+                data-port-scope="theirs">${esc(theirName)} <span class="seg-n">${theirs.length}</span></button>
+      </div>
+      <input class="fld fld-sm trc-search" type="search" id="port-search"
+             placeholder="Filter by port, service or process…"
+             value="${esc(state.portQuery)}" data-port-query>
     </div>`;
 
   if (rows.length === 0) {
+    const why = q
+      ? `Nothing matches “${esc(state.portQuery)}”.`
+      : state.portScope === "theirs"
+        ? "Nothing is listening on the other machine, or it is unreachable."
+        : state.portScope === "mine"
+          ? "Nothing is listening on this Mac."
+          : "No dev servers or databases are running on either machine.";
     return (
-      filter +
-      `<div class="es"><div class="es-title">Nothing recorded</div>
-         <div class="es-msg">${
-           state.traceErrorsOnly ? "Nothing has failed in the last hour." : "No activity in the last hour."
-         }</div></div>`
+      controls +
+      `<div class="es"><div class="es-title">Nothing listening</div>
+         <div class="es-msg">${why}</div></div>`
     );
   }
 
   return (
-    filter +
+    controls +
     `<div class="cd"><div class="cd-body" style="padding:0">${rows
-      .map(
-        (e) => `
-      <div class="run-row">
-        <span class="run-ts">${esc(new Date(e.at).toLocaleTimeString())}</span>
-        <span class="run-dev">${esc(e.type)}</span>
-        <div style="flex:1;min-width:0">
-          ${e.provenance ? `<span class="tg tg-record">${esc(e.provenance)}</span>` : ""}
-          ${e.durationMs ? `<span class="tx-micro">${e.durationMs}ms</span>` : ""}
-          ${e.error ? `<div class="tx-caption">${esc(e.error)}</div>` : ""}
-          ${e.hint ? `<div class="tx-micro">${esc(e.hint)}</div>` : ""}
-        </div>
-        ${e.code ? `<span class="bdg bdg-attention">${esc(e.code)}</span>` : ""}
-      </div>`,
-      )
+      .map((p) => portView(p, byPort.get(p.port), p.device === selfName))
+      .join("")}</div></div>` +
+    (state.portMeta?.remoteStale && state.portMeta.reason
+      ? `<div class="banner banner-stale">${esc(state.portMeta.reason)}</div>`
+      : "")
+  );
+}
+
+/** Render a payload for reading: pretty JSON, bounded so one huge body cannot
+ *  push the rest of the trace off screen. */
+function payloadBlock(label: string, value: unknown): string {
+  if (value === undefined || value === null || value === "") return "";
+  let text: string;
+  try {
+    text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  } catch {
+    text = String(value);
+  }
+  if (!text || text === "{}" || text === "null") return "";
+  const CAP = 4000;
+  const clipped = text.length > CAP;
+  if (clipped) text = text.slice(0, CAP) + "\n… " + (text.length - CAP) + " more characters";
+  return `
+    <div class="trc-field">
+      <div class="trc-label">${esc(label)}</div>
+      <pre class="trc-pre">${esc(text)}</pre>
+    </div>`;
+}
+
+/** A stable key for a row, so an expanded row stays open across the 5s poll. */
+function traceKey(e: TraceEvent, i: number): string {
+  return e.id !== undefined ? String(e.id) : `${e.at}#${e.type}#${i}`;
+}
+
+function traceView(): string {
+  const q = state.traceQuery.trim().toLowerCase();
+  const all = [...state.trace].reverse();
+
+  // Match across everything the row can show, payloads included — the point
+  // of a trace is finding the one call that went wrong.
+  const rows = q
+    ? all.filter((e) => {
+        const hay = [
+          e.type, e.device, e.provenance, e.code, e.error, e.hint,
+          typeof e.request === "string" ? e.request : JSON.stringify(e.request ?? ""),
+          typeof e.response === "string" ? e.response : JSON.stringify(e.response ?? ""),
+        ].join(" ").toLowerCase();
+        return hay.includes(q);
+      })
+    : all;
+
+  const controls = `
+    <div class="trc-controls">
+      <div class="seg">
+        <button class="seg-item${state.traceErrorsOnly ? "" : " is-active"}"
+                data-trace-filter="all">Everything</button>
+        <button class="seg-item${state.traceErrorsOnly ? " is-active" : ""}"
+                data-trace-filter="errors">Failures only</button>
+      </div>
+      <input class="fld fld-sm trc-search" type="search" id="trace-search"
+             placeholder="Filter by call, device, error or payload…"
+             value="${esc(state.traceQuery)}" data-trace-query>
+      ${
+        state.traceOpen.size > 0
+          ? `<button class="btn btn-tertiary btn-sm" data-action="trace-collapse">Collapse all</button>`
+          : ""
+      }
+    </div>`;
+
+  if (rows.length === 0) {
+    const why = q
+      ? `Nothing matches “${esc(state.traceQuery)}”.`
+      : state.traceErrorsOnly
+        ? "Nothing has failed in the last hour."
+        : "No activity in the last hour.";
+    return (
+      controls +
+      `<div class="es"><div class="es-title">Nothing to show</div>
+         <div class="es-msg">${why}</div></div>`
+    );
+  }
+
+  const count =
+    q || state.traceErrorsOnly
+      ? `<div class="trc-count">${rows.length} of ${all.length}</div>`
+      : "";
+
+  return (
+    controls +
+    count +
+    `<div class="cd"><div class="cd-body" style="padding:0">${rows
+      .map((e, i) => {
+        const key = traceKey(e, i);
+        const open = state.traceOpen.has(key);
+        const detail = open
+          ? `<div class="trc-detail">
+               ${payloadBlock("When", new Date(e.at).toLocaleString())}
+               ${e.type ? payloadBlock("Call", e.type) : ""}
+               ${e.provenance ? payloadBlock("Asked by", e.provenance) : ""}
+               ${e.device ? payloadBlock("Device", e.device) : ""}
+               ${e.durationMs ? payloadBlock("Took", e.durationMs + " ms") : ""}
+               ${e.code ? payloadBlock("Error code", e.code) : ""}
+               ${e.error ? payloadBlock("Error", e.error) : ""}
+               ${e.hint ? payloadBlock("Hint", e.hint) : ""}
+               ${payloadBlock("Request", e.request)}
+               ${payloadBlock("Response", e.response)}
+             </div>`
+          : "";
+        return `
+      <div class="trc-row${open ? " is-open" : ""}">
+        <button class="trc-summary" data-trace-row="${esc(key)}"
+                aria-expanded="${open ? "true" : "false"}">
+          <span class="trc-chev" aria-hidden="true"></span>
+          <span class="run-ts">${esc(new Date(e.at).toLocaleTimeString())}</span>
+          <span class="run-dev">${esc(e.type)}</span>
+          <span class="trc-mid">
+            ${e.provenance ? `<span class="tg tg-record">${esc(e.provenance)}</span>` : ""}
+            ${e.device ? `<span class="tx-micro">${esc(e.device)}</span>` : ""}
+            ${e.durationMs ? `<span class="tx-micro">${e.durationMs}ms</span>` : ""}
+            ${e.error ? `<span class="tx-caption">${esc(e.error)}</span>` : ""}
+          </span>
+          ${e.code ? `<span class="bdg bdg-attention">${esc(e.code)}</span>` : ""}
+        </button>
+        ${detail}
+      </div>`;
+      })
       .join("")}</div></div>`
   );
 }
@@ -476,7 +640,7 @@ function tabsView(): string {
   return `<div class="seg">${tabs
     .map(
       ([id, label]) =>
-        `<button class="seg-item${state.tab === id ? " is-selected" : ""}" data-tab="${id}">${label}</button>`,
+        `<button class="seg-item${state.tab === id ? " is-active" : ""}" data-tab="${id}">${label}</button>`,
     )
     .join("")}</div>`;
 }
@@ -546,6 +710,8 @@ function render(): void {
       <div class="legend">
         <span class="legend-daemon"><span class="legend-sw" style="background:var(--live)"></span>
           <span class="tx-micro">daemon · alive</span></span>
+        <button class="btn btn-tertiary btn-sm" data-action="agent-setup"
+                title="Register Ìbejì's MCP server, or copy a briefing for your agent">For agents</button>
         <button class="btn btn-secondary btn-sm" data-action="update-check"
                 title="Check GitHub for a newer version">${esc(versionLabel(self?.version))}</button>
       </div>
@@ -565,25 +731,24 @@ function render(): void {
 
   let body: string;
   if (state.tab === "spaces") {
+    // The create action lives beside the list, not only in an empty state:
+    // a second space is as ordinary as the first, and until now there was no
+    // way to make either one from the window at all.
+    const createBtn = `
+      <button class="btn btn-primary btn-sm" data-action="create-space">New space…</button>`;
     body =
       state.spaces.length > 0
-        ? state.spaces.map(spaceView).join("")
-        : `<div class="es"><div class="es-title">No spaces</div>
+        ? state.spaces.map(spaceView).join("") +
+          `<div class="cd-more">${createBtn}</div>`
+        : `<div class="es">
+             <div class="es-title">No spaces</div>
              <div class="es-msg">A space keeps a folder identical on both machines.
-             Create one from a folder you work in.</div></div>`;
+             One side is master and wins conflicts; the other keeps a full copy
+             on disk.</div>
+             ${createBtn}
+           </div>`;
   } else if (state.tab === "ports") {
-    const byPort = new Map(state.tunnels.map((t) => [t.remotePort, t]));
-    const selfName = state.self?.name ?? "";
-    body =
-      state.ports.length > 0
-        ? `<div class="cd"><div class="cd-body" style="padding:0">${state.ports
-            .map((p) => portView(p, byPort.get(p.port), p.device === selfName))
-            .join("")}</div></div>` +
-          (state.portMeta?.remoteStale && state.portMeta.reason
-            ? `<div class="banner banner-stale">${esc(state.portMeta.reason)}</div>`
-            : "")
-        : `<div class="es"><div class="es-title">Nothing listening</div>
-             <div class="es-msg">No dev servers or databases are running on either machine.</div></div>`;
+    body = portsView();
   } else if (state.tab === "trace") {
     body = traceView();
   } else if (state.pairing) {
@@ -867,6 +1032,115 @@ async function addByIP(): Promise<void> {
 }
 
 /**
+ * Create a space.
+ *
+ * Three questions, asked one at a time with the existing single-field modal,
+ * rather than one wide form: the folder comes from the OS picker (typing an
+ * absolute path is how you create a space over the wrong directory), and the
+ * role needs explaining at the moment it is chosen, not in a tooltip.
+ */
+async function createSpace(): Promise<void> {
+  const name = await ask({
+    title: "New space",
+    body:
+      "A space keeps one folder identical on both machines — real files on " +
+      "each disk, not a network mount. Give it a short name; both machines " +
+      "use the same one.",
+    field: { label: "Name", placeholder: "atlas" },
+    confirmLabel: "Next",
+  });
+  if (name === undefined) return;
+  const trimmed = name.trim();
+  if (!trimmed) {
+    notify("A space needs a name.", "attention");
+    return;
+  }
+
+  const picked = await window.ibeji.pickFolder();
+  const path = unwrap(picked);
+  if (!path) return; // cancelled in the OS dialog
+
+  // Master wins conflicts, so which side holds it is a real decision. For a
+  // repository it should be the machine with the git credentials — that makes
+  // master-wins the correct outcome rather than a surprise.
+  const role = await ask({
+    title: "Which machine is master?",
+    body:
+      `If the same file changes on both machines before syncing, the master's ` +
+      `version wins and the other is kept beside it as a conflict copy. For a ` +
+      `code repository, master should be the machine that owns the git ` +
+      `credentials.\n\nFolder: ${path}`,
+    field: { label: "Role for this Mac", placeholder: "master" },
+    confirmLabel: "Create",
+  });
+  if (role === undefined) return;
+  const r = role.trim().toLowerCase() === "replica" ? "replica" : "master";
+
+  const res = await window.ibeji.createSpace({
+    name: trimmed,
+    path,
+    role: r,
+    mode: "two-way",
+  });
+  const out = unwrap(res);
+  if (!out) {
+    notify(res.ok ? "Could not create the space." : res.error.message, "attention");
+    return;
+  }
+
+  await refresh();
+  const other = r === "master" ? "replica" : "master";
+  notify(
+    `Created ${trimmed}. On the other Mac run: ibeji spaces create ${trimmed} <folder> --role ${other}`,
+    "live",
+  );
+  // The daemon's .git warning is not advisory noise — syncing .git corrupts
+  // repositories — so it is surfaced rather than swallowed.
+  if (out.warning) notify(out.warning, "attention");
+}
+
+/**
+ * Tell an agent about this install.
+ *
+ * An MCP server has shipped inside the bundle since M3 and the product never
+ * mentioned it anywhere, so the feature built specifically for agents was the
+ * hardest one to discover. This offers both routes: the registration command
+ * (after which the agent discovers the tools itself and nothing goes stale),
+ * and a pasteable briefing for agents without MCP.
+ */
+async function agentSetup(): Promise<void> {
+  const cmdRes = await window.ibeji.mcpCommand();
+  const cmd = unwrap(cmdRes) ?? "";
+  const briefRes = await window.ibeji.agentBriefing();
+  const brief = unwrap(briefRes) ?? "";
+
+  const choice = await ask({
+    title: "Connect your agent",
+    body:
+      "Ìbejì ships an MCP server, so an agent can read, search, run commands " +
+      "and open tunnels on your other Mac — through the same permission gate " +
+      "you use.\n\nRegister it:\n\n" +
+      cmd +
+      "\n\nType 'command' to copy that, or 'briefing' to copy a longer " +
+      "description you can paste into any agent.",
+    field: { label: "Copy", placeholder: "command" },
+    confirmLabel: "Copy",
+  });
+  if (choice === undefined) return;
+
+  const wantBriefing = choice.trim().toLowerCase().startsWith("b");
+  const text = wantBriefing ? brief : cmd;
+  if (!text) {
+    notify("Nothing to copy.", "attention");
+    return;
+  }
+  void navigator.clipboard
+    .writeText(text)
+    .then(() => notify(wantBriefing ? "Briefing copied." : "Command copied.", "live"))
+    .catch(() => notify("Could not copy to the clipboard.", "attention"));
+}
+
+/**
  * Check GitHub for a newer release.
  *
  * `quiet` is the launch check: it must not interrupt with "you are up to
@@ -922,6 +1196,24 @@ document.addEventListener("click", (e) => {
   if (tab) {
     state.tab = tab as Tab;
     void refresh();
+    return;
+  }
+
+  // A trace row opens to show what the call was actually made with. Toggled
+  // in local state and keyed by the daemon's row id, so the 5-second poll
+  // does not snap an open row shut while it is being read.
+  const traceRow = el.closest("[data-trace-row]")?.getAttribute("data-trace-row");
+  if (traceRow) {
+    if (state.traceOpen.has(traceRow)) state.traceOpen.delete(traceRow);
+    else state.traceOpen.add(traceRow);
+    render();
+    return;
+  }
+
+  const portScope = el.closest("[data-port-scope]")?.getAttribute("data-port-scope");
+  if (portScope) {
+    state.portScope = portScope as "all" | "mine" | "theirs";
+    render();
     return;
   }
 
@@ -992,6 +1284,16 @@ document.addEventListener("click", (e) => {
     return;
   }
   switch (target.getAttribute("data-action")) {
+    case "trace-collapse":
+      state.traceOpen.clear();
+      render();
+      break;
+    case "create-space":
+      void createSpace();
+      break;
+    case "agent-setup":
+      void agentSetup();
+      break;
     case "confirm-pairing":
       void confirmPairing();
       break;
@@ -1017,6 +1319,32 @@ document.addEventListener("click", (e) => {
     case "add-by-ip":
       void addByIP();
       break;
+  }
+});
+
+// The two search fields. These are `input`, not `click`: filtering has to
+// happen as you type. The value is kept in state and written back into the
+// field on render, and the caret is restored afterwards — re-rendering the
+// whole view on every keystroke otherwise sends the cursor to position zero
+// on the second character, which makes the field unusable.
+document.addEventListener("input", (e) => {
+  const el = e.target as HTMLInputElement | null;
+  if (!el) return;
+
+  const isTrace = el.hasAttribute("data-trace-query");
+  const isPort = el.hasAttribute("data-port-query");
+  if (!isTrace && !isPort) return;
+
+  const caret = el.selectionStart;
+  if (isTrace) state.traceQuery = el.value;
+  else state.portQuery = el.value;
+
+  render();
+
+  const again = document.getElementById(el.id) as HTMLInputElement | null;
+  if (again) {
+    again.focus();
+    if (caret !== null) again.setSelectionRange(caret, caret);
   }
 });
 

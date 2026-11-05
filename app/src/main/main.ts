@@ -11,7 +11,7 @@
  * than quitting the app.
  */
 
-import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage } from "electron";
+import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, dialog } from "electron";
 import { join } from "node:path";
 import { ApiClient, ApiError, DaemonUnreachableError } from "./api.js";
 import { ensureInstalled } from "./selfinstall.js";
@@ -147,6 +147,84 @@ function registerHandlers(): void {
   handle("pending", () => api.pending());
 
   handle("spaces", () => api.spaces());
+  handle("spaces:create", (opts: {
+    name: string; path: string; role: "master" | "replica"; mode: "two-way" | "mirror";
+  }) => api.createSpace(opts));
+
+  // The OS folder picker. A space is a real folder on disk, and asking people
+  // to type an absolute path into a text field is how you get typos that
+  // create a space over the wrong directory.
+  handle("pick-folder", async () => {
+    const parent = BrowserWindow.getFocusedWindow() ?? win;
+    const res = parent
+      ? await dialog.showOpenDialog(parent, {
+          title: "Choose a folder to share",
+          properties: ["openDirectory", "createDirectory"],
+          buttonLabel: "Use this folder",
+        })
+      : await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] });
+    return res.canceled ? undefined : res.filePaths[0];
+  });
+
+  // --- agents ---------------------------------------------------------------
+  //
+  // An MCP server has shipped inside the bundle since M3 and nothing in the
+  // product ever mentioned it, so the one feature built specifically for
+  // agents was the hardest one to find.
+
+  handle("agent:mcp-command", async () => {
+    // The path inside the bundle, not a PATH lookup: the MCP server is never
+    // linked onto PATH, and an agent told to run a bare `ibeji-mcp` gets
+    // "command not found".
+    const bin = join(process.resourcesPath, "bin", "ibeji-mcp");
+    return `claude mcp add ibeji ${bin}`;
+  });
+
+  handle("agent:briefing", async () => {
+    const self = await api.self().catch(() => undefined);
+    const devices = await api.devices().catch(() => ({ devices: [] }));
+    const peer = devices.devices[0];
+    const bin = join(process.resourcesPath, "bin", "ibeji-mcp");
+
+    const lines = [
+      "This Mac has Ìbejì installed. It links exactly two Macs over the LAN so",
+      "one can run commands, read files, share folders and tunnel localhost",
+      "ports on the other. Nothing touches the internet.",
+      "",
+      `This machine: ${self?.name ?? "unknown"}${
+        self?.addresses?.length ? ` at ${self.addresses[0]}:${self.port}` : ""
+      }`,
+      peer
+        ? `Paired with:  ${peer.name} at ${peer.address} (${peer.status}, ${peer.mode} mode)`
+        : "Paired with:  nothing yet — pair first with `ibeji pair <address>`",
+      "",
+      "Register the MCP server so you get the tools directly:",
+      `  ${bin}`,
+      `  e.g. claude mcp add ibeji ${bin}`,
+      "",
+      "Or drive it from the shell:",
+      peer ? `  ibeji ls ${peer.name}:~/projects` : "  ibeji devices",
+      peer ? `  ibeji grep ${peer.name}:~/projects TODO --glob '*.ts'` : "",
+      peer ? `  ibeji run ${peer.name} --cwd ~/projects/x -- npm test` : "",
+      peer ? `  ibeji ports ${peer.name}` : "",
+      "  ibeji surface --json        # the whole API, described for you",
+      "  ibeji doctor                # six checks, each failure names its fix",
+      "",
+      "Things worth knowing before you act:",
+      "- Reads are never gated. Writes and commands are, unless the receiving",
+      "  machine is in Bypass mode. In Prompt mode a human must approve each",
+      "  one, and an unanswered prompt fails as `timed_out` after 60 seconds —",
+      "  that means nobody is at that machine, so do not retry in a loop.",
+      "- Commands run in the real zsh login shell, so nvm, pnpm and homebrew",
+      "  are on PATH.",
+      "- Use `--after-sync <space>` for any command whose correctness depends",
+      "  on files you just edited here, or it may run against a half-synced tree.",
+      "- Prefer one `ibeji grep` over many `ibeji cat` calls.",
+      "- Full reference: https://ibeji.devferanmi.xyz/ibeji.md",
+    ];
+    return lines.filter((l) => l !== "").join("\n");
+  });
+
   handle("spaces:promote", (name: string, path: string) => api.promote(name, path));
   handle("spaces:discard", (name: string, path: string) => api.discard(name, path));
 

@@ -160,3 +160,126 @@
   margin-top: var(--s-5);
   text-align: center;
 }
+
+/* --- the trace and ports controls ------------------------------------------
+   A scope switcher and a search field, shared by both views. The design
+   system has the segmented control and the field; what it does not have is
+   the row that puts them together above a list, which is app chrome. */
+
+.trc-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-bottom: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.trc-search {
+  flex: 1;
+  min-width: 180px;
+}
+
+.fld-sm {
+  height: 28px;
+  font-size: var(--t-body-sm);
+  padding: 0 var(--s-3);
+}
+
+/* The count beside a scope: how many rows that tab holds, so you can see the
+   other machine has nothing listening without switching to it. */
+.seg-n {
+  opacity: .55;
+  font-variant-numeric: tabular-nums;
+  margin-left: 2px;
+}
+
+.trc-count {
+  font-family: var(--font-record);
+  font-size: var(--t-record-xs);
+  color: var(--text-tertiary);
+  margin: calc(var(--s-2) * -1) 0 var(--s-3) var(--s-1);
+}
+
+/* --- an expandable trace row -----------------------------------------------
+   The daemon records the request and response for every call and the window
+   used to throw both away, so the trace could say a call failed but never
+   what it was called with. */
+
+.trc-row {
+  border-bottom: 1px solid var(--edge-hair-soft);
+}
+.trc-row:last-child { border-bottom: 0; }
+.trc-row.is-open { background: var(--surface-sheet); }
+
+.trc-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-3) var(--s-4);
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-chrome);
+  color: var(--text-primary);
+}
+.trc-summary:hover { background: var(--surface-canvas-sunken); }
+
+.trc-chev {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--text-tertiary);
+  border-bottom: 1.5px solid var(--text-tertiary);
+  transform: rotate(-45deg);
+  transition: transform var(--d-fast) var(--ease-standard);
+}
+.trc-row.is-open .trc-chev { transform: rotate(45deg); }
+
+.trc-mid {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.trc-detail {
+  padding: 0 var(--s-4) var(--s-4) calc(var(--s-4) + 14px);
+  display: grid;
+  gap: var(--s-3);
+}
+
+.trc-field { min-width: 0; }
+
+.trc-label {
+  font-family: var(--font-record);
+  font-size: var(--t-overline);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: var(--s-1);
+}
+
+.trc-pre {
+  font-family: var(--font-record);
+  font-size: var(--t-record-sm);
+  line-height: 1.6;
+  margin: 0;
+  padding: var(--s-3);
+  background: var(--surface-inset);
+  border-radius: var(--r-sm);
+  color: var(--ink-800);
+  /* Payloads can be long in both directions; scroll rather than stretching
+     the window or clipping the one line that mattered. */
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trc-chev { transition: none; }
+}

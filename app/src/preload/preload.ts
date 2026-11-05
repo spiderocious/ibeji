@@ -67,6 +67,14 @@ const bridge = {
 
   // --- spaces, ports, prompts ----------------------------------------------
   spaces: () => invoke<{ spaces: SpaceStatus[] }>("spaces"),
+  createSpace: (opts: { name: string; path: string; role: "master" | "replica"; mode: "two-way" | "mirror" }) =>
+    invoke<{ warning?: string }>("spaces:create", opts),
+  pickFolder: () => invoke<string | undefined>("pick-folder"),
+
+  // --- agents --------------------------------------------------------------
+  // An MCP server ships with the app, and nothing in the window ever said so.
+  mcpCommand: () => invoke<string>("agent:mcp-command"),
+  agentBriefing: () => invoke<string>("agent:briefing"),
   promote: (name: string, path: string) => invoke<void>("spaces:promote", name, path),
   discard: (name: string, path: string) => invoke<void>("spaces:discard", name, path),
 

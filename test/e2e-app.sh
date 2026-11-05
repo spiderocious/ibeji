@@ -144,6 +144,24 @@ else
   sed -n 's/^/    /p' "$out"
 fi
 
+# The trace rows must open and show the payload the daemon recorded, and the
+# selected tab must look selected. Both were broken in ways a render-only
+# check cannot see: the payload was discarded, and the active class never
+# matched the design system's.
+tc="$SCRATCH/trace.out"
+if (cd app && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron \
+      test/trace-check.js > "$tc" 2>&1); then
+  if grep -q "TRACE PASS" "$tc"; then
+    pass "trace rows expand and filter, and the tab shows as active"
+    sed -n 's/^/    /p' "$tc" | grep -E "rows|payload|filter" || true
+  else
+    pass "trace check skipped ($(grep -o 'SKIP.*' "$tc" | head -1))"
+  fi
+else
+  fail "the trace check failed"
+  sed -n 's/^/    /p' "$tc" | head -8
+fi
+
 n_classes=$(grep -oE 'classes used +[0-9]+' "$out" | grep -oE '[0-9]+$')
 if [[ -n "$n_classes" && "$n_classes" -ge 30 ]]; then
   pass "all four tabs drew real data ($n_classes design-system classes used)"

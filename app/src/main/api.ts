@@ -173,6 +173,15 @@ export class ApiClient {
     return this.request("GET", "/v1/spaces");
   }
 
+  createSpace(opts: {
+    name: string;
+    path: string;
+    role: "master" | "replica";
+    mode: "two-way" | "mirror";
+  }): Promise<{ warning?: string }> {
+    return this.request("POST", "/v1/spaces/create", opts);
+  }
+
   promote(name: string, path: string): Promise<void> {
     return this.request("POST", "/v1/spaces/promote", { name, path });
   }

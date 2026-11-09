@@ -6,7 +6,7 @@
  * executable", so the app looked installed and simply never linked — the worst
  * kind of failure, because nothing says what is wrong.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -94,12 +94,14 @@ try {
   // internet still works — two Macs on one network that cannot see each
   // other, and nothing anywhere saying why.
   const daemonID = (() => {
+    // codesign -dv reports on STDERR, not stdout — reading stdout returns an
+    // empty string and the check then fails a perfectly good build.
     try {
-      const out = execFileSync("codesign", ["-dv", join(app, "Contents/Resources/bin/ibeji-daemon")],
-        { stdio: ["ignore", "ignore", "pipe"] });
-      return (out || Buffer.from("")).toString();
-    } catch (err) {
-      return (err.stderr || Buffer.from("")).toString();
+      const r = spawnSync("codesign", ["-dv", join(app, "Contents/Resources/bin/ibeji-daemon")],
+        { encoding: "utf8" });
+      return `${r.stdout || ""}${r.stderr || ""}`;
+    } catch {
+      return "";
     }
   })();
   const idLine = /Identifier=(\S+)/.exec(daemonID)?.[1] ?? "";

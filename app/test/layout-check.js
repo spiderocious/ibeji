@@ -89,6 +89,21 @@ app.whenReady().then(async () => {
     })()`));
   }
 
+  // Be explicit about the tab: the Shell pane scrolls its own output rather
+  // than .app-main, so a test that happens to land there measures the wrong
+  // element and reports a working layout as broken.
+  await js(`(() => {
+    const t = document.querySelector('[data-tab="trace"]') ||
+              document.querySelector('[data-tab="ports"]');
+    if (t) t.click();
+  })()`);
+  await wait(1500);
+
+  Object.assign(before, await js(`(() => {
+    const r = (s) => { const e = document.querySelector(s); return e ? e.getBoundingClientRect().top : null; };
+    return { tabs: r(".app-tabs"), controls: r(".app-controls"), header: r(".app-header") };
+  })()`));
+
   await js(`document.querySelector(".app-main").scrollTop = 600`);
   await wait(400);
   const after = await js(`(() => {

@@ -485,3 +485,8 @@ html, body { height: 100%; overflow: hidden; }
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* A banner states a problem; these are what to do about it. Without them the
+   reader is told the other Mac is unreachable and left to work out the rest. */
+.banner { display: flex; align-items: center; gap: var(--s-3); }
+.banner-acts { margin-left: auto; display: flex; gap: var(--s-2); flex: none; }

@@ -859,14 +859,25 @@ function traceView(): string {
 }
 
 function tabsView(): string {
-  const tabs: [Tab, string][] = [
-    ["devices", "Devices"],
-    ["spaces", "Spaces"],
-    ["ports", "Ports"],
-    ["trace", "Trace"],
-    ["shell", "Shell"],
-    ["health", "Health"],
-  ];
+  // Spaces, Ports, Shell and Trace all describe a pair, so they are
+  // meaningless before there is one. Devices and Health are not: Health is
+  // where you find out WHY pairing is failing, and hiding it until pairing
+  // succeeds is precisely backwards — it was unreachable for the one person
+  // who most needed it.
+  const paired = state.devices.length > 0;
+  const tabs: [Tab, string][] = paired
+    ? [
+        ["devices", "Devices"],
+        ["spaces", "Spaces"],
+        ["ports", "Ports"],
+        ["trace", "Trace"],
+        ["shell", "Shell"],
+        ["health", "Health"],
+      ]
+    : [
+        ["devices", "Devices"],
+        ["health", "Health"],
+      ];
   return `<div class="seg">${tabs
     .map(
       ([id, label]) =>
@@ -915,7 +926,23 @@ function updateView(): string {
 function noticeView(): string {
   if (!state.notice) return "";
   const n = state.notice;
-  return `<div class="banner banner-${n.tone === "live" ? "live" : "attention"}">${esc(n.text)}</div>`;
+  // A banner that only states a problem leaves the reader stuck. When the
+  // peer is unreachable the two things worth doing are to look at why, and
+  // to say where it moved to — so offer both rather than making someone go
+  // and find them.
+  const unreachable = /not reachable|unreachable|no route/i.test(n.text);
+  const actions =
+    unreachable && state.tab !== "health"
+      ? `<span class="banner-acts">
+           <button class="btn btn-tertiary btn-sm" data-action="go-health">Why?</button>
+           ${state.devices.length > 0
+             ? `<button class="btn btn-tertiary btn-sm" data-action="reconnect">Reconnect…</button>`
+             : ""}
+         </span>`
+      : "";
+  return `<div class="banner banner-${n.tone === "live" ? "live" : "attention"}">
+    <span>${esc(n.text)}</span>${actions}
+  </div>`;
 }
 
 function render(): void {
@@ -929,6 +956,12 @@ function render(): void {
 
   const self = state.self;
   const paired = state.devices[0];
+
+  // Unpairing, or losing the link, can leave a tab selected that no longer
+  // has anything to show. Fall back rather than rendering an empty view.
+  if (!paired && state.tab !== "devices" && state.tab !== "health") {
+    state.tab = "devices";
+  }
 
   // This machine's name and key fingerprint are context for the Devices tab,
   // where you are comparing two machines. On Ports, Spaces, Trace or Shell
@@ -1058,7 +1091,7 @@ function render(): void {
   root.innerHTML = `
     <div class="app-titlebar-pad"></div>
     ${header}
-    ${state.devices.length > 0 ? `<div class="app-tabs">${tabsView()}</div>` : ""}
+    <div class="app-tabs">${tabsView()}</div>
     ${updateView()}
     ${noticeView()}
     ${controls ? `<div class="app-controls">${controls}</div>` : ""}
@@ -1764,6 +1797,10 @@ document.addEventListener("click", (e) => {
       state.traceOpen.clear();
       state.tracePinned.clear();
       render();
+      break;
+    case "go-health":
+      state.tab = "health";
+      void refresh();
       break;
     case "reconnect":
       void reconnectPeer();

@@ -95,6 +95,7 @@ app.whenReady().then(async () => {
         ? getComputedStyle(document.querySelector(".figure-xl")).fontFamily : "",
       emptyStateMsg: (document.querySelector(".es-msg") || {}).textContent || "",
       daemonDown: document.body.textContent.includes("Ìbejì is not running"),
+      tabs: [...document.querySelectorAll("[data-tab]")].map((e) => e.getAttribute("data-tab")),
       usedClasses: [...new Set([...document.querySelectorAll("[class]")]
         .flatMap((el) => [...el.classList]))].sort(),
     };
@@ -155,6 +156,20 @@ app.whenReady().then(async () => {
       "IBEJI_SMOKE_REQUIRE_DAEMON is set but the window says the daemon is down: " +
       `it read ${process.env.IBEJI_HANDOFF || "~/.ibeji/api.json"}`],
   ];
+  // Health must be reachable when NOTHING is paired. It was gated behind a
+  // paired device, which hid the diagnostics at the one moment they are
+  // needed: a user whose pairing was failing had no way to see why, and the
+  // window offered them nothing but the failure itself.
+  checks.push([
+    probe.tabs.includes("health"),
+    `the Health tab is missing; tabs are ${probe.tabs.join(", ") || "(none)"}. ` +
+      "It must be reachable while unpaired, because that is when it is needed.",
+  ]);
+  checks.push([
+    probe.tabs.includes("devices"),
+    `the Devices tab is missing; tabs are ${probe.tabs.join(", ") || "(none)"}`,
+  ]);
+
   for (const [ok, msg] of checks) if (!ok) fail(msg);
 
   // Hold the markup against the frozen design system: every class used must be

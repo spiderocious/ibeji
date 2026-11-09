@@ -253,6 +253,32 @@ while [ $i -lt 20 ]; do
 done
 "$CLI" doctor || true
 
+# Say plainly when macOS has shut Ìbejì out of the local network.
+#
+# Updating the app changes the bundle's hash, and macOS keys local network
+# permission to that hash. These builds are ad-hoc signed, so there is no
+# certificate for the grant to follow and a permission given to the last
+# version does not carry to this one. The denial is silent: every connection
+# to the other Mac fails with "no route to host" while the internet keeps
+# working, which looks like a broken network and is not.
+#
+# There is no way to make macOS ask on demand — opening the app does not do
+# it, because the window never touches the network; the daemon does, and by
+# then the answer is already cached. So the honest thing is to tell the
+# person exactly what to click, here, while they are still looking.
+if "$CLI" doctor 2>&1 | grep -q "blocking Ìbejì from this network"; then
+  say ""
+  warn "macOS is blocking Ìbejì from your local network."
+  say "  This happens on every update: macOS ties the permission to the app's"
+  say "  exact contents, which change each version."
+  say ""
+  say "  ${B}Open System Settings → Privacy & Security → Local Network${X}"
+  say "  ${B}and switch Ìbejì on.${X} Then run: ${B}ibeji doctor${X}"
+  say ""
+  say "  Until then the two Macs cannot see each other, however the network"
+  say "  is configured."
+fi
+
 # A link in a directory the shell never searches is a link nobody can use.
 case ":$PATH:" in
   *":$PREFIX:"*) ;;

@@ -49,9 +49,12 @@ func LocalNetwork() CheckFunc {
 
 		if netOK {
 			return Failedf(name,
-				"Open System Settings → Privacy & Security → Local Network and turn on Ìbejì. "+
-					"If it is already on, turn it off and on again — a new version of the app "+
-					"can land as a separate entry.",
+				"Open System Settings → Privacy & Security → Local Network and turn on "+
+					"Ìbejì. This recurs after every update: macOS ties the permission to "+
+					"the app's exact contents, which change with each version, and these "+
+					"builds are not signed with a certificate it can follow instead. "+
+					"Expect a new entry in that list rather than the old one switching "+
+					"itself back on.",
 				"macOS is blocking Ìbejì from this network (the internet works, but the "+
 					"router at %s does not answer)", gw)
 		}

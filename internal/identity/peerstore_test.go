@@ -2,6 +2,7 @@ package identity
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -164,5 +165,68 @@ func TestCorruptStoredPairingIsReported(t *testing.T) {
 	if _, err := LoadStore(newSelf(t), "Laptop", ks); err == nil {
 		t.Fatal("a corrupt stored pairing loaded without error; the daemon would " +
 			"start unpaired and look like it had forgotten the other machine")
+	}
+}
+
+// A peer that moves must leave a trail. Remembering only the last address
+// gives a daemon one guess when the peer moves again, and on a network where
+// mDNS is blocked there is no second way to look.
+func TestPeerAddressHistoryIsKeptAndPersisted(t *testing.T) {
+	ks := NewMemoryStore()
+	self := newSelf(t)
+	peerKey := newSelf(t).Public()
+
+	store, err := LoadStore(self, "Laptop", ks)
+	if err != nil {
+		t.Fatalf("LoadStore: %v", err)
+	}
+	if _, err := store.Pin(peerKey, "Desktop", "192.168.1.39:7749"); err != nil {
+		t.Fatalf("Pin: %v", err)
+	}
+	store.SetPeerAddress("192.168.1.147:7749")
+	store.SetPeerAddress("10.0.0.5:7749")
+
+	after, err := LoadStore(self, "Laptop", ks)
+	if err != nil {
+		t.Fatalf("LoadStore after restart: %v", err)
+	}
+	got := after.Peer()
+	if got == nil {
+		t.Fatal("no peer after restart")
+	}
+	if got.LastAddress != "10.0.0.5:7749" {
+		t.Errorf("LastAddress = %q, want the newest", got.LastAddress)
+	}
+	if len(got.KnownAddresses) < 2 {
+		t.Fatalf("KnownAddresses = %v, want the earlier addresses kept too", got.KnownAddresses)
+	}
+	if got.KnownAddresses[0] != "10.0.0.5:7749" {
+		t.Errorf("KnownAddresses[0] = %q, want the newest first", got.KnownAddresses[0])
+	}
+	var sawOld bool
+	for _, a := range got.KnownAddresses {
+		if a == "192.168.1.147:7749" {
+			sawOld = true
+		}
+	}
+	if !sawOld {
+		t.Errorf("an address the peer answered on was forgotten: %v", got.KnownAddresses)
+	}
+}
+
+// The history must not grow without bound: it is a hint for the next
+// reconnect, not a log.
+func TestPeerAddressHistoryIsBounded(t *testing.T) {
+	ks := NewMemoryStore()
+	store, _ := LoadStore(newSelf(t), "Laptop", ks)
+	if _, err := store.Pin(newSelf(t).Public(), "Desktop", "10.0.0.1:7749"); err != nil {
+		t.Fatalf("Pin: %v", err)
+	}
+	for i := 2; i < 20; i++ {
+		store.SetPeerAddress(fmt.Sprintf("10.0.0.%d:7749", i))
+	}
+	got := store.Peer()
+	if len(got.KnownAddresses) > 5 {
+		t.Errorf("KnownAddresses grew to %d entries", len(got.KnownAddresses))
 	}
 }

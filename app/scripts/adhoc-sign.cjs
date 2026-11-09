@@ -81,9 +81,21 @@ exports.default = async function adhocSign(context) {
   const contents = join(app, "Contents");
 
   // 1. Our own Go binaries, which arrive via extraResources unsigned.
+  //
+  // Each gets an EXPLICIT identifier. Without one codesign invents
+  // "ibeji-daemon-<hash of the binary>", which changes on every build — and
+  // macOS keys Local Network permission to that identifier. So every release
+  // looked like a brand-new app: the permission the user granted to v0.1.6
+  // did not carry to v0.1.7, the daemon was denied the LAN silently, and
+  // every dial came back "no route to host" while the internet still worked.
+  // The symptom reached a user as two machines on one network that could not
+  // see each other, and System Settings listing eleven separate
+  // "ibeji-daemon" entries, all switched on.
   const bin = join(contents, "Resources", "bin");
   if (existsSync(bin)) {
-    for (const f of readdirSync(bin)) sign(join(bin, f));
+    for (const f of readdirSync(bin)) {
+      sign(join(bin, f), ["--identifier", `com.ibeji.${f}`]);
+    }
   }
 
   // 2. Frameworks and helper apps, deepest first. Signing an outer bundle

@@ -49,7 +49,7 @@ type Env struct {
 // Commands returns every subcommand, in the order help lists them.
 func Commands() []*Command {
 	return []*Command{
-		cmdDevices, cmdPair, cmdInfo, cmdLs, cmdCat, cmdGrep, cmdRun, cmdSpaces,
+		cmdDevices, cmdPair, cmdReconnect, cmdInfo, cmdLs, cmdCat, cmdGrep, cmdRun, cmdSpaces,
 		cmdRules, cmdPrompts,
 		cmdPorts, cmdTunnel, cmdCp, cmdOpen, cmdPad,
 		cmdPs, cmdKill, cmdCheck, cmdDoctor, cmdTrace, cmdHelpJSON,

@@ -24,6 +24,7 @@ import type {
   DoctorCheck,
   Mode,
   PairingSession,
+  Health,
   SelfInfo,
   ShellChunk,
   ShellInfo,
@@ -280,6 +281,22 @@ export class ApiClient {
    * The caller must have obtained typed confirmation of the device name first —
    * this is one of the four places oxblood is spent.
    */
+  reconnect(address: string): Promise<{ device: Device }> {
+    return this.request("POST", "/v1/devices/reconnect", { address });
+  }
+
+  health(): Promise<Health> {
+    return this.request("GET", "/v1/health");
+  }
+
+  logs(limit?: number, q?: string): Promise<{ path: string; lines: string[] }> {
+    const p = new URLSearchParams();
+    if (limit) p.set("limit", String(limit));
+    if (q) p.set("q", q);
+    const qs = p.toString();
+    return this.request("GET", `/v1/logs${qs ? "?" + qs : ""}`);
+  }
+
   unpair(deviceId: string): Promise<void> {
     return this.request<void>("POST", "/v1/unpair", { deviceId });
   }

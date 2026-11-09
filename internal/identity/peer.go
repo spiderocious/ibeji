@@ -27,6 +27,13 @@ type Peer struct {
 	// mDNS cannot resolve it. Informational, never authoritative.
 	LastAddress string
 
+	// KnownAddresses is every address this peer has answered on, most recent
+	// first. A laptop flips between Wi-Fi and Ethernet, and DHCP moves it
+	// again overnight; remembering only the last one means a daemon that
+	// finds the peer moved has exactly one guess, and on a network where
+	// mDNS is blocked there is no second way to look.
+	KnownAddresses []string
+
 	// PairedAt records when the pinning happened, shown in the device view.
 	PairedAt time.Time
 
@@ -196,9 +203,30 @@ func (s *Store) Touch() {
 func (s *Store) SetPeerAddress(addr string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.peer != nil && addr != "" {
-		s.peer.LastAddress = addr
+	if s.peer == nil || addr == "" {
+		return
 	}
+	s.peer.LastAddress = addr
+
+	// Keep a short history, most recent first. Bounded: this is a hint for
+	// the next reconnect, not a log.
+	const keep = 5
+	next := []string{addr}
+	for _, a := range s.peer.KnownAddresses {
+		if a != addr && len(next) < keep {
+			next = append(next, a)
+		}
+	}
+	s.peer.KnownAddresses = next
+
+	// Persist it. Without this a peer that moved was re-found once and then
+	// forgotten on the next restart, so the daemon went back to dialling an
+	// address nothing answers — and on a network where mDNS is blocked there
+	// is no second way to find it.
+	//
+	// Best-effort: failing to write down a new address must not drop a link
+	// that is working right now.
+	_ = savePeer(s.secrets, s.peer)
 }
 
 // SetPeerName records a name the peer propagated to us.

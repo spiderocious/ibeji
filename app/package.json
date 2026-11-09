@@ -54,7 +54,13 @@
         }
       ],
       "identity": "-",
-      "hardenedRuntime": false
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "Ìbejì connects to your other Mac on this network. It never sends anything to the internet.",
+        "NSBonjourServices": [
+          "_ibeji._tcp"
+        ]
+      }
     },
     "dmg": {
       "title": "Ìbejì ${version}",

@@ -20,9 +20,13 @@ const (
 	OrderLaunchAgent = 10
 	OrderKeychain    = 20
 	OrderAPIToken    = 30
-	OrderMDNS        = 40
-	OrderLink        = 50
-	OrderLoginShell  = 60
+	// Local network comes BEFORE mDNS and the link, because when macOS has
+	// denied it both of those fail as a consequence and their messages send
+	// you looking in the wrong place.
+	OrderLocalNet   = 35
+	OrderMDNS       = 40
+	OrderLink       = 50
+	OrderLoginShell = 60
 )
 
 // SecretStore is the subset of the keychain doctor needs.
@@ -224,6 +228,7 @@ func Standard(cfg Config) *Doctor {
 	d.Add(OrderLaunchAgent, LaunchAgent(cfg.LaunchAgentLabel))
 	d.Add(OrderKeychain, Keychain(cfg.Secrets))
 	d.Add(OrderAPIToken, APIToken(cfg.Endpoint, cfg.Token))
+	d.Add(OrderLocalNet, LocalNetwork())
 	d.Add(OrderMDNS, MDNS(cfg.PeerName, cfg.ResolvePeer))
 	d.Add(OrderLink, Link(cfg.Link))
 	d.Add(OrderLoginShell, LoginShell(cfg.LoginShellTools))

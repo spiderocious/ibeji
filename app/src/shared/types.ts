@@ -134,6 +134,12 @@ export interface IbejiBridge {
   cancelPairing(sessionId: string): Promise<Result<void>>;
 
   unpair(deviceId: string): Promise<Result<void>>;
+  /** Point the daemon at the peer's new address. Keys stay pinned. */
+  reconnect(address: string): Promise<Result<{ device: Device }>>;
+  /** Both machines at a glance. */
+  health(): Promise<Result<Health>>;
+  /** The tail of this daemon's log. */
+  logs(limit?: number, q?: string): Promise<Result<{ path: string; lines: string[] }>>;
   rename(name: string): Promise<Result<void>>;
   setMode(deviceId: string, mode: Mode): Promise<Result<void>>;
 
@@ -282,4 +288,34 @@ export interface ShellInfo {
 export interface ShellChunk {
   stream: "stdout" | "stderr";
   data: string;
+}
+
+/** One doctor check, as the health view shows it. */
+export interface HealthCheck {
+  name: string;
+  ok: boolean;
+  severity: "pass" | "warn" | "fail";
+  detail: string;
+  fix?: string;
+}
+
+/** One machine's state in the health view. */
+export interface HealthSide {
+  name: string;
+  version?: string;
+  os?: string;
+  arch?: string;
+  addresses?: string[];
+  port?: number;
+  reachable: boolean;
+  unreachable?: string;
+  checks?: HealthCheck[];
+}
+
+/** Both machines at a glance. */
+export interface Health {
+  at: string;
+  paired: boolean;
+  here: HealthSide;
+  there?: HealthSide;
 }

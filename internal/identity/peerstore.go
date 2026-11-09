@@ -34,10 +34,11 @@ const accountPeer = "pinned-peer"
 // The public key is base64 rather than raw bytes because the keychain holds
 // a blob that a human may well end up looking at while debugging.
 type storedPeer struct {
-	PublicKey   string    `json:"publicKey"`
-	Name        string    `json:"name"`
-	LastAddress string    `json:"lastAddress,omitempty"`
-	PairedAt    time.Time `json:"pairedAt"`
+	PublicKey      string    `json:"publicKey"`
+	Name           string    `json:"name"`
+	LastAddress    string    `json:"lastAddress,omitempty"`
+	KnownAddresses []string  `json:"knownAddresses,omitempty"`
+	PairedAt       time.Time `json:"pairedAt"`
 }
 
 // savePeer writes the pinned peer, or clears it when p is nil.
@@ -52,10 +53,11 @@ func savePeer(ks SecretStore, p *Peer) error {
 		return nil
 	}
 	blob, err := json.Marshal(storedPeer{
-		PublicKey:   base64.StdEncoding.EncodeToString(p.PublicKey),
-		Name:        p.Name,
-		LastAddress: p.LastAddress,
-		PairedAt:    p.PairedAt,
+		PublicKey:      base64.StdEncoding.EncodeToString(p.PublicKey),
+		Name:           p.Name,
+		LastAddress:    p.LastAddress,
+		KnownAddresses: p.KnownAddresses,
+		PairedAt:       p.PairedAt,
 	})
 	if err != nil {
 		return fmt.Errorf("identity: encode pinned peer: %w", err)
@@ -95,10 +97,11 @@ func loadPeer(ks SecretStore) (*Peer, error) {
 			len(pub), PublicKeySize)
 	}
 	return &Peer{
-		PublicKey:   ed25519.PublicKey(pub),
-		Name:        sp.Name,
-		LastAddress: sp.LastAddress,
-		PairedAt:    sp.PairedAt,
+		PublicKey:      ed25519.PublicKey(pub),
+		Name:           sp.Name,
+		LastAddress:    sp.LastAddress,
+		KnownAddresses: sp.KnownAddresses,
+		PairedAt:       sp.PairedAt,
 	}, nil
 }
 

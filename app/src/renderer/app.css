@@ -411,3 +411,77 @@ html, body { height: 100%; overflow: hidden; }
 /* The pane fills the tab rather than sitting in the scrolling column: a
    terminal scrolls its own output, it does not grow the page. */
 .app-main:has(.sh-pane) { overflow: hidden; }
+
+/* --- the Health tab --------------------------------------------------------
+   Both machines side by side, with this daemon's log underneath. The point is
+   to answer "is the other end alive, and if not why" without walking to it. */
+
+.hl-sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-4);
+}
+@media (max-width: 760px) { .hl-sides { grid-template-columns: 1fr; } }
+
+.hl-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-1) 0;
+}
+.hl-row .mono { font-family: var(--font-record); font-size: var(--t-record-sm); }
+
+.hl-why {
+  margin-top: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--attention-soft);
+  border: 1px solid var(--attention-edge);
+  font-size: var(--t-body-sm);
+  color: var(--ink-800);
+}
+
+.hl-check {
+  display: flex;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
+  border-top: 1px solid var(--edge-hair-soft);
+}
+.hl-check:first-of-type { margin-top: var(--s-3); }
+
+/* A drawn mark rather than an emoji: the design system sets colour by
+   meaning, and a glyph would carry its own. */
+.hl-mark {
+  flex: none;
+  width: 8px; height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+}
+.hl-pass .hl-mark { background: var(--live); }
+.hl-warn .hl-mark { background: var(--attention); }
+.hl-fail .hl-mark { background: var(--blood-600); }
+
+.hl-text { min-width: 0; }
+.hl-name { font-size: var(--t-body-sm); font-weight: 500; }
+
+/* The fix is the useful half of a failed check, so it is not a footnote. */
+.hl-fix {
+  margin-top: var(--s-1);
+  font-size: var(--t-body-sm);
+  color: var(--ink-700);
+}
+
+.hl-log {
+  margin: 0;
+  padding: var(--s-3) var(--s-4);
+  max-height: 320px;
+  overflow: auto;
+  font-family: var(--font-record);
+  font-size: var(--t-record-xs);
+  line-height: 1.6;
+  color: #D7DEDC;
+  background: var(--ink-900);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

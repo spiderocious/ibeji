@@ -738,6 +738,15 @@ func (f *fakeState) Unpair(deviceID string) error {
 	return nil
 }
 
+func (f *fakeState) ReconnectAt(address string) (*Device, error) {
+	if f.device == nil {
+		return nil, errors.New("not paired")
+	}
+	f.device.Address = address
+	f.device.Status = StatusLive
+	return f.device, nil
+}
+
 func (f *fakeState) PendingPairing() *PairingView { return f.pairing }
 
 func (f *fakeState) BeginPairing(address string) (*PairingView, error) {

@@ -27,6 +27,7 @@ import (
 	"github.com/feranmi/ibeji/internal/api"
 	"github.com/feranmi/ibeji/internal/device"
 	"github.com/feranmi/ibeji/internal/discovery"
+	"github.com/feranmi/ibeji/internal/doctor"
 	"github.com/feranmi/ibeji/internal/identity"
 	"github.com/feranmi/ibeji/internal/link"
 	"github.com/feranmi/ibeji/internal/trace"
@@ -171,6 +172,8 @@ func run(logger *slog.Logger, apiAddr string, peerPort int, noMDNS bool, instanc
 	server.RegisterPortRoutes(d)
 	server.RegisterTransferRoutes(d)
 	api.RegisterShellRoutes(server, d)
+	api.RegisterHealthRoutes(server, d)
+	api.RegisterLogRoutes(server)
 	// The barrier: exec with afterSync waits here before anything runs.
 	server.Barrier = d.WaitForPeerSync
 	if err := server.Start(apiAddr); err != nil {
@@ -196,6 +199,26 @@ func run(logger *slog.Logger, apiAddr string, peerPort int, noMDNS bool, instanc
 	}
 
 	logger.Info("daemon: ready", "api", server.Endpoint())
+
+	// Check the local network once at startup and say so loudly if it is
+	// blocked.
+	//
+	// macOS denies local network access silently: every LAN dial returns
+	// "no route to host" — the same error an absent machine gives — while
+	// the internet keeps working. Without this the first sign is a pairing
+	// that fails for no stated reason, which is exactly how this cost a user
+	// two days. Run in the background so a slow probe cannot delay startup.
+	go func() {
+		check := doctor.LocalNetwork()(ctx)
+		switch {
+		case check.Severity == doctor.Fail:
+			logger.Error("daemon: "+check.Detail, "fix", check.Fix)
+		case check.Severity == doctor.Warn:
+			logger.Warn("daemon: local network " + check.Detail)
+		default:
+			logger.Info("daemon: local network " + check.Detail)
+		}
+	}()
 	<-ctx.Done()
 	logger.Info("daemon: shutting down")
 	return nil

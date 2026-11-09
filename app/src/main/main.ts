@@ -260,6 +260,9 @@ function registerHandlers(): void {
   handle("pair:cancel", (sessionId: string) => api.cancelPairing(sessionId));
 
   handle("unpair", (deviceId: string) => api.unpair(deviceId));
+  handle("reconnect", (address: string) => api.reconnect(address));
+  handle("health", () => api.health());
+  handle("logs", (limit?: number, q?: string) => api.logs(limit, q));
   handle("rename", (name: string) => api.rename(name));
   handle("mode:set", (deviceId: string, mode: "prompt" | "bypass") =>
     api.setMode(deviceId, mode),

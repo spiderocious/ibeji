@@ -98,6 +98,10 @@ type DeviceState interface {
 	SetMode(deviceID string, mode Mode) error
 	Unpair(deviceID string) error
 
+	// ReconnectAt dials the pinned peer at a new address, verifying it is
+	// still the same machine. A changed IP is not a trust event.
+	ReconnectAt(address string) (*Device, error)
+
 	// PendingPairing reports a ceremony in flight, so a window opened or
 	// reopened mid-pairing shows the code rather than nothing.
 	PendingPairing() *PairingView
@@ -190,6 +194,30 @@ func (s *Server) RegisterDeviceRoutes(state DeviceState) {
 			s.events.Publish(EventDeviceChanged, d)
 		}
 		WriteJSON(w, nil)
+	})
+
+	s.Handle(Route{
+		Method: "POST", Path: "/devices/reconnect", Mutating: true,
+		Summary: "Reconnect the paired device at a new address, without re-pairing",
+	}, func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Address string `json:"address"`
+		}
+		if err := DecodeBody(r, &req); err != nil {
+			WriteError(w, err)
+			return
+		}
+		if req.Address == "" {
+			WriteError(w, Errf(CodeBadRequest, "address is required"))
+			return
+		}
+		device, err := state.ReconnectAt(req.Address)
+		if err != nil {
+			WriteError(w, err)
+			return
+		}
+		s.events.Publish(EventDeviceChanged, device)
+		WriteJSON(w, map[string]any{"device": device})
 	})
 
 	s.Handle(Route{

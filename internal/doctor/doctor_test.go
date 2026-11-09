@@ -412,7 +412,7 @@ func TestLinkUpPasses(t *testing.T) {
 
 // --- the standard six -------------------------------------------------------
 
-func TestStandardRunsSixChecksInOrder(t *testing.T) {
+func TestStandardRunsEveryCheckInOrder(t *testing.T) {
 	report := Standard(Config{
 		LaunchAgentLabel: "com.ibeji.daemon.test-nonexistent",
 		Secrets:          fakeStore{},
@@ -424,10 +424,16 @@ func TestStandardRunsSixChecksInOrder(t *testing.T) {
 		LoginShellTools:  []string{"sh"},
 	}).Run(ctx(t))
 
-	if len(report.Checks) != 6 {
-		t.Fatalf("got %d checks, want 6", len(report.Checks))
+	// Local network sits before mDNS and Link deliberately: when macOS has
+	// denied it, both of those fail as a consequence and their messages send
+	// you looking in the wrong place.
+	want := []string{
+		"LaunchAgent", "Keychain", "API token",
+		"Local network", "mDNS", "Link", "Login shell",
 	}
-	want := []string{"LaunchAgent", "Keychain", "API token", "mDNS", "Link", "Login shell"}
+	if len(report.Checks) != len(want) {
+		t.Fatalf("got %d checks, want %d", len(report.Checks), len(want))
+	}
 	for i, w := range want {
 		if report.Checks[i].Name != w {
 			t.Fatalf("check %d is %q, want %q", i, report.Checks[i].Name, w)

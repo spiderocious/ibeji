@@ -180,6 +180,18 @@ func Render(c Config) ([]byte, error) {
 	// Background: the daemon is not a foreground app and must not take focus
 	// or appear in the Dock.
 	writeString(&b, "ProcessType", "Background")
+	// Tie the job to the app bundle, so macOS treats the daemon's privacy
+	// requests as the app's own.
+	//
+	// Without this, launchd runs the daemon as a free-standing executable
+	// with no relationship to com.ibeji.app, and macOS has no app to ask
+	// about when it wants local network access. The denial is silent: every
+	// LAN dial returns "connect: no route to host" — the same error an
+	// absent machine gives — while the internet keeps working. Two Macs on
+	// one network could not see each other, System Settings listed eleven
+	// separate "ibeji-daemon" entries all switched on, and none of them
+	// governed the process actually running.
+	writeArray(&b, "AssociatedBundleIdentifiers", []string{"com.ibeji.app"})
 	// A crash loop must not spin: launchd will not restart more often than
 	// this.
 	writeInt(&b, "ThrottleInterval", 10)

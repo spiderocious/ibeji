@@ -181,6 +181,12 @@ func (d *Daemon) dialPeer(ctx context.Context) (link.Conn, error) {
 		add(c.Endpoint())
 	}
 	add(peer.LastAddress)
+	// Then everywhere it has answered before. A laptop that flips between
+	// Wi-Fi and Ethernet, or picks up a new lease overnight, is usually at
+	// one of these — and when mDNS is blocked there is nothing else to try.
+	for _, a := range peer.KnownAddresses {
+		add(a)
+	}
 
 	if len(addrs) == 0 {
 		return nil, link.ErrNotLinked

@@ -22,6 +22,9 @@ import type {
   PortMeta,
   PortRow,
   Result,
+  Health,
+  HealthCheck,
+  HealthSide,
   SelfInfo,
   SpaceStatus,
   TraceEvent,
@@ -38,7 +41,7 @@ declare global {
 
 type Tone = "live" | "attention" | "irreversible";
 
-type Tab = "devices" | "spaces" | "ports" | "trace" | "shell";
+type Tab = "devices" | "spaces" | "ports" | "trace" | "shell" | "health";
 
 interface State {
   tab: Tab;
@@ -56,6 +59,13 @@ interface State {
   traceOpen: Set<string>;
   /** Open rows kept on screen after the trace window scrolled past them. */
   tracePinned: Map<string, TraceEvent>;
+  /** Both machines at a glance, for the Health tab. */
+  health: Health | undefined;
+  /** The daemon's log, for the Health tab. */
+  logs: string[];
+  /** True while the log is being re-read. */
+  logsBusy: boolean;
+
   /** The Shell tab's sub-tabs, in the order they were opened. */
   shells: ShellTab[];
   /** Which sub-tab is showing. */
@@ -91,6 +101,9 @@ const state: State = {
   traceQuery: "",
   traceOpen: new Set<string>(),
   tracePinned: new Map<string, TraceEvent>(),
+  health: undefined,
+  logs: [],
+  logsBusy: false,
   shells: [],
   activeShell: undefined,
   shellBusy: false,
@@ -207,6 +220,11 @@ async function refresh(): Promise<void> {
   } else if (state.tab === "trace") {
     const opts = state.traceErrorsOnly ? { errors: true } : undefined;
     state.trace = unwrap(await window.ibeji.trace(opts))?.events ?? [];
+  } else if (state.tab === "health") {
+    // Asking the far machine takes a round trip, so this runs only while
+    // the tab is showing rather than on every poll.
+    state.health = unwrap(await window.ibeji.health());
+    if (state.logs.length === 0) void loadLogs();
   }
   render();
 }
@@ -483,6 +501,84 @@ function formatBytes(n: number): string {
  * whose port you are looking at, and which "Link" button does what. The scopes
  * split that; the All tab keeps the device column so duplicates stay legible.
  */
+/**
+ * The Health tab: both machines at a glance, and the daemon's log.
+ *
+ * Answering "are both ends up?" used to mean running doctor here, walking to
+ * the other machine, and running it again — and when the two could not see
+ * each other, neither report said whether the far end was even alive.
+ * Diagnosing anything past that meant opening Terminal and tailing a file.
+ */
+function healthView(): string {
+  const h = state.health;
+  if (!h) {
+    return `<div class="es"><div class="es-title">Checking…</div>
+      <div class="es-msg">Asking both machines how they are.</div></div>`;
+  }
+
+  const side = (s: HealthSide | undefined, who: string): string => {
+    if (!s) {
+      return `<div class="cd"><div class="cd-head"><div class="cd-title">${esc(who)}</div></div>
+        <div class="cd-body"><div class="tx-caption">Nothing paired yet.</div></div></div>`;
+    }
+    const checks = (s.checks ?? [])
+      .map(
+        (c: HealthCheck) => `
+        <div class="hl-check hl-${esc(c.severity)}">
+          <span class="hl-mark" aria-hidden="true"></span>
+          <div class="hl-text">
+            <div class="hl-name">${esc(c.name)}</div>
+            <div class="tx-micro">${esc(c.detail)}</div>
+            ${c.fix ? `<div class="hl-fix">${esc(c.fix)}</div>` : ""}
+          </div>
+        </div>`,
+      )
+      .join("");
+
+    return `
+      <div class="cd">
+        <div class="cd-head">
+          <div class="cd-title">${esc(who)}</div>
+          <span class="${s.reachable ? "sl sl-live" : "sl sl-unreachable"}">
+            <span class="dot"></span>${s.reachable ? "reachable" : "unreachable"}
+          </span>
+        </div>
+        <div class="cd-body">
+          <div class="hl-row"><span class="tx-micro">Name</span><span>${esc(s.name || "—")}</span></div>
+          ${s.version ? `<div class="hl-row"><span class="tx-micro">Version</span><span class="mono">${esc(s.version)}</span></div>` : ""}
+          ${s.os ? `<div class="hl-row"><span class="tx-micro">System</span><span class="mono">${esc(s.os)}/${esc(s.arch ?? "")}</span></div>` : ""}
+          ${
+            s.addresses && s.addresses.length > 0
+              ? `<div class="hl-row"><span class="tx-micro">Address</span><span class="mono">${esc(s.addresses[0] ?? "")}${s.port ? ":" + s.port : ""}</span></div>`
+              : ""
+          }
+          ${s.unreachable ? `<div class="hl-why">${esc(s.unreachable)}</div>` : ""}
+          ${checks}
+        </div>
+      </div>`;
+  };
+
+  const logs = state.logs.length
+    ? `<pre class="hl-log" id="hl-log">${esc(state.logs.join("\n"))}</pre>`
+    : `<div class="tx-caption" style="padding:var(--s-3)">No log yet.</div>`;
+
+  return `
+    <div class="hl-sides">
+      ${side(h.here, "This Mac")}
+      ${h.paired ? side(h.there, h.there?.name || "The other Mac") : ""}
+    </div>
+    <div class="cd">
+      <div class="cd-head">
+        <div class="cd-title">Daemon log</div>
+        <button class="btn btn-tertiary btn-sm" data-action="logs-refresh"${state.logsBusy ? " disabled" : ""}>
+          ${state.logsBusy ? "Reading…" : "Refresh"}
+        </button>
+        <button class="btn btn-tertiary btn-sm" data-action="logs-copy">Copy</button>
+      </div>
+      <div class="cd-body" style="padding:0">${logs}</div>
+    </div>`;
+}
+
 /**
  * The Shell tab.
  *
@@ -769,6 +865,7 @@ function tabsView(): string {
     ["ports", "Ports"],
     ["trace", "Trace"],
     ["shell", "Shell"],
+    ["health", "Health"],
   ];
   return `<div class="seg">${tabs
     .map(
@@ -897,6 +994,8 @@ function render(): void {
     body = traceView();
   } else if (state.tab === "shell") {
     body = shellView();
+  } else if (state.tab === "health") {
+    body = healthView();
   } else if (state.pairing) {
     body = pairingView(state.pairing);
   } else if (paired) {
@@ -908,6 +1007,12 @@ function render(): void {
           <button class="btn btn-tertiary btn-sm" data-action="toggle-mode" data-device="${esc(paired.id)}">
             Switch to ${paired.mode === "bypass" ? "Prompt" : "Bypass"}
           </button>
+          ${
+            paired.status === "live"
+              ? ""
+              : `<button class="btn btn-primary btn-sm" data-action="reconnect"
+                         title="The other Mac moved, or is on a new address">Reconnect…</button>`
+          }
           <button class="btn btn-secondary btn-sm" data-action="unpair" data-device="${esc(paired.id)}"
                   data-name="${esc(paired.name)}">Unpair…</button>
         </div>
@@ -1297,6 +1402,57 @@ async function agentSetup(): Promise<void> {
     .catch(() => notify("Could not copy to the clipboard.", "attention"));
 }
 
+/**
+ * Tell the daemon where the other Mac went.
+ *
+ * A changed address is not a trust event — the keys stay pinned — so this
+ * must not drag the user back through the six-digit ceremony. Until it
+ * existed, an unreachable device offered only "Unpair", so working around a
+ * network problem meant throwing away a working pairing.
+ */
+async function reconnectPeer(): Promise<void> {
+  const current = state.devices[0];
+  const address = await ask({
+    title: "Reconnect",
+    body:
+      `${current?.name ?? "The other Mac"} is not answering at ` +
+      `${current?.address ?? "its last address"}. If it moved to a new address, ` +
+      `type it here — you will not have to pair again, because its key is already ` +
+      `trusted.\n\nThe address is shown in the Ìbejì window on that Mac.`,
+    field: { label: "Address", placeholder: "192.168.1.42" },
+    confirmLabel: "Reconnect",
+  });
+  if (address === undefined) return;
+  const trimmed = address.trim();
+  if (!trimmed) {
+    notify("Enter the other machine's address.", "attention");
+    return;
+  }
+  const res = await window.ibeji.reconnect(trimmed);
+  if (!res.ok) {
+    notify(res.error.message, "attention");
+    return;
+  }
+  await refresh();
+  notify(`Reconnected to ${res.value.device.name}.`, "live");
+}
+
+/** Read the tail of this daemon's log. */
+async function loadLogs(): Promise<void> {
+  if (state.logsBusy) return;
+  state.logsBusy = true;
+  render();
+  try {
+    const res = await window.ibeji.logs(400);
+    const got = unwrap(res);
+    state.logs = got?.lines ?? [];
+    if (!got && !res.ok) notify(res.error.message, "attention");
+  } finally {
+    state.logsBusy = false;
+    render();
+  }
+}
+
 // --- the Shell tab ---------------------------------------------------------
 
 /** Open another shell on the other machine and switch to it. */
@@ -1608,6 +1764,18 @@ document.addEventListener("click", (e) => {
       state.traceOpen.clear();
       state.tracePinned.clear();
       render();
+      break;
+    case "reconnect":
+      void reconnectPeer();
+      break;
+    case "logs-refresh":
+      void loadLogs();
+      break;
+    case "logs-copy":
+      void navigator.clipboard
+        .writeText(state.logs.join("\n"))
+        .then(() => notify(`Copied ${state.logs.length} lines.`, "live"))
+        .catch(() => notify("Could not copy the log.", "attention"));
       break;
     case "shell-new":
       void openShell();

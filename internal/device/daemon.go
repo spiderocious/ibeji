@@ -427,11 +427,20 @@ func (d *Daemon) BeginPairing(address string) (*api.PairingView, error) {
 		// No Expect: this is the one moment the product talks to a key it has
 		// not seen, and the six digits are what gate it.
 	}
+	// Each step says which one it is, so a failure names the point it broke
+	// rather than collapsing to "failed to pair". A person watching this
+	// needs to know whether the machine was unreachable, refused the
+	// connection, or answered as somebody else — three different problems
+	// with three different answers.
+	d.Logger.Info("pair: connecting", "step", "connect", "address", address)
 	conn, err := transport.Dial(ctx, address)
 	if err != nil {
+		d.Logger.Warn("pair: could not connect", "step", "connect",
+			"address", address, "err", err)
 		return nil, err
 	}
 	defer conn.Close()
+	d.Logger.Info("pair: connected", "step", "connect", "address", address)
 
 	// The key the peer presented is what the six digits are derived from.
 	keyed, ok := conn.(link.KeyedConn)
@@ -440,8 +449,11 @@ func (d *Daemon) BeginPairing(address string) (*api.PairingView, error) {
 	}
 	pub, err := keyed.PeerKey()
 	if err != nil {
+		d.Logger.Warn("pair: no key from the peer", "step", "key", "err", err)
 		return nil, err
 	}
+	d.Logger.Info("pair: got the peer's key", "step", "key",
+		"fingerprint", identity.Fingerprint(pub))
 
 	// Ask the peer its name, retrying briefly.
 	//
@@ -467,7 +479,8 @@ func (d *Daemon) BeginPairing(address string) (*api.PairingView, error) {
 	if lastErr != nil {
 		// A peer that will not say its name is still pairable; the address
 		// stands in, and the fingerprint beside the code is what matters.
-		d.Logger.Warn("device: name exchange failed during pairing", "err", lastErr)
+		d.Logger.Warn("device: name exchange failed during pairing",
+			"step", "name", "err", lastErr)
 	}
 
 	session, err := d.pairer.Begin(link.PairingOffer{
@@ -478,7 +491,8 @@ func (d *Daemon) BeginPairing(address string) (*api.PairingView, error) {
 	if err != nil {
 		return nil, err
 	}
-	d.Logger.Info("device: pairing started", "peer", name, "address", address)
+	d.Logger.Info("device: pairing started", "step", "code",
+		"peer", name, "address", address)
 	return api.PairingViewFrom(session), nil
 }
 

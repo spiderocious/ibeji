@@ -82,6 +82,47 @@ try {
   }
   console.log(`  gatekeeper    ${assess.split("\n")[0] || "rejected (unsigned — expected)"}`);
 
+  // The daemon must carry a STABLE code-signing identifier, and the bundle
+  // must declare why it wants the local network. Both are invisible when
+  // wrong and both break the product completely.
+  //
+  // Without an explicit identifier codesign invents one from a hash of the
+  // binary, so every build is a different app to macOS and the Local Network
+  // permission granted to the last version does not carry over. Without the
+  // usage string macOS has no prompt to show, so it never asks and silently
+  // denies. Either way every LAN dial returns "no route to host" while the
+  // internet still works — two Macs on one network that cannot see each
+  // other, and nothing anywhere saying why.
+  const daemonID = (() => {
+    try {
+      const out = execFileSync("codesign", ["-dv", join(app, "Contents/Resources/bin/ibeji-daemon")],
+        { stdio: ["ignore", "ignore", "pipe"] });
+      return (out || Buffer.from("")).toString();
+    } catch (err) {
+      return (err.stderr || Buffer.from("")).toString();
+    }
+  })();
+  const idLine = /Identifier=(\S+)/.exec(daemonID)?.[1] ?? "";
+  if (idLine !== "com.ibeji.ibeji-daemon") {
+    console.error(`\nThe daemon's signing identifier is ${idLine || "missing"}, want com.ibeji.ibeji-daemon.`);
+    console.error("  A per-build identifier makes macOS treat every release as a new app, so");
+    console.error("  Local Network permission never carries over and the LAN goes dark.");
+    process.exit(1);
+  }
+  console.log(`  signing id    ${idLine}`);
+
+  const plist = execFileSync("plutil", ["-p", join(app, "Contents/Info.plist")],
+    { stdio: ["ignore", "pipe", "pipe"] }).toString();
+  for (const key of ["NSLocalNetworkUsageDescription", "NSBonjourServices"]) {
+    if (!plist.includes(key)) {
+      console.error(`\n${dmg} is missing ${key} in Info.plist.`);
+      console.error("  macOS cannot prompt for local network access without it, so it denies");
+      console.error("  silently and the two machines never see each other.");
+      process.exit(1);
+    }
+  }
+  console.log("  local network declared");
+
   console.log(`  OK — every binary in ${dmg.split("/").pop()} is ${want}`);
 } finally {
   try { execFileSync("hdiutil", ["detach", mnt, "-quiet"]); } catch {}

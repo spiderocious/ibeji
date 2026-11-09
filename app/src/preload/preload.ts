@@ -25,6 +25,7 @@ import type {
   TraceStats,
   TunnelRow,
   Result,
+  Health,
   SelfInfo,
   ShellChunk,
   ShellInfo,
@@ -59,6 +60,10 @@ const bridge = {
    * name first — this is one of the four places oxblood is spent.
    */
   unpair: (deviceId: string) => invoke<void>("unpair", deviceId),
+  reconnect: (address: string) => invoke<{ device: Device }>("reconnect", address),
+  health: () => invoke<Health>("health"),
+  logs: (limit?: number, q?: string) =>
+    invoke<{ path: string; lines: string[] }>("logs", limit, q),
   rename: (name: string) => invoke<void>("rename", name),
   /**
    * Set a paired device's permission mode. Flipping to bypass requires

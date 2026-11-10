@@ -91,9 +91,19 @@ app.whenReady().then(async () => {
   if (r.skipped) {
     // Not a pass for the dialog, but not a failure either: the screen under
     // test is not on screen. Say so plainly rather than claiming a pass.
+    //
+    // This is the normal state on a working machine, so the words have to be
+    // unambiguous: a reader skimming for PASS must not take this for one, and
+    // "own address: MISSING" must not read as a defect. The address is hidden
+    // on purpose once paired — selfAddressView() returns "" because an
+    // address nobody needs is noise — so absent is the correct answer here.
     console.log("MODAL SKIP —", r.skipped);
-    console.log("  discovered     ", (r.discovered || []).join(", "));
-    console.log("  own address    ", r.selfAddress ?? "MISSING");
+    console.log("  checks run     ", "0 — the Add by IP dialog is unreachable while paired");
+    console.log("  discovered     ", (r.discovered || []).join(", ") || "none");
+    console.log(
+      "  own address    ",
+      r.selfAddress ?? "hidden, as intended while paired (unpair to test this dialog)",
+    );
     return app.exit(0);
   }
   const good = r.hasInput && r.closedOnEscape && r.selfAddress;

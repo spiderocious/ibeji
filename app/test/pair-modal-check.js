@@ -67,17 +67,18 @@ app.whenReady().then(async () => {
   }
   await new Promise((r) => setTimeout(r, 4000));
 
-  // Already paired means there is no Pair button to click and the ceremony
-  // cannot run. Skip rather than fail: the machine running this may well have
-  // a pair set up, and a test that demands an unpaired daemon would be red for
-  // the wrong reason.
+  // This used to skip when the daemon was already paired, on the reasoning
+  // that there was no Pair button to click. That made the test a no-op on
+  // exactly the machines the product is working on — it exited 0 having
+  // asserted nothing, so a green run meant nothing. The checks below never
+  // needed the real button: they dial a dead address through a synthetic
+  // data-pair element, which is the same dispatch path a click takes and is
+  // indifferent to whether a pair already exists. So it runs either way, and
+  // reports which state it ran in.
   const paired = await win.webContents.executeJavaScript(
     `document.querySelectorAll('[data-action="unpair"]').length > 0`,
   );
-  if (paired) {
-    console.log("PAIR MODAL SKIP: this daemon is already paired, so the ceremony cannot run");
-    return app.exit(0);
-  }
+  console.log(`  - running against a daemon that is ${paired ? "already paired" : "unpaired"}`);
 
   // --- 1. the modal opens at once, while the attempt is still in flight ----
   //
@@ -118,7 +119,13 @@ app.whenReady().then(async () => {
     "the timeline shows every step of the ceremony, not only the current one",
     `saw ${early.steps} rows`,
   );
-  check(early.running >= 1, "a step is marked as running while the dial is in flight");
+  // Only meaningful unpaired. An already-paired daemon refuses at the first
+  // step, before any dial, so there is correctly nothing in flight to mark.
+  if (!paired) {
+    check(early.running >= 1, "a step is marked as running while the dial is in flight");
+  } else {
+    console.log("  - no step is in flight, because an already-paired daemon refuses before dialling");
+  }
 
   // --- 2. the failure is named, explained, and actionable ------------------
   //
@@ -186,10 +193,18 @@ app.whenReady().then(async () => {
   // An unroutable address times out, and a timeout is the case a sweep can
   // resolve — so the offer must be there. This is the specific thing whose
   // absence cost a day.
-  check(
-    done.sweepOffered,
-    "a timeout offers to scan the network, since a moved peer is the likeliest cause",
-  );
+  // Also unpaired-only: the sweep offer hangs off a *timeout*, and an
+  // already-paired daemon never reaches the dial, so there is no timeout to
+  // offer it for. Asserting it while paired demanded a sweep button for a
+  // failure whose fix is Unpair, which would be the wrong advice.
+  if (!paired) {
+    check(
+      done.sweepOffered,
+      "a timeout offers to scan the network, since a moved peer is the likeliest cause",
+    );
+  } else {
+    console.log("  - no sweep offer, correctly: an already-paired refusal is not a timeout");
+  }
   check(done.retry, "Try again is offered after a failure");
   check(done.close, "Close is offered after a failure");
   check(done.copy, "this attempt's log can be copied");

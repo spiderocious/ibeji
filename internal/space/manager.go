@@ -471,6 +471,21 @@ func (m *Manager) ApplyWith(ctx context.Context, name string, plan *Plan, fetch 
 			}
 			synced = append(synced, change.Rel)
 
+		case MakeDir:
+			// Only empty folders reach here: one with a file in it is created
+			// by WriteAtomic's MkdirAll when that file lands. Creating it is
+			// idempotent, so a race with an arriving file is harmless.
+			dest := filepath.Join(root, filepath.FromSlash(change.Rel))
+			if !within(root, dest) {
+				firstErr = cmpErr(firstErr, fmt.Errorf("space: %q is outside the space", change.Rel))
+				continue
+			}
+			if err := os.MkdirAll(dest, 0o755); err != nil {
+				firstErr = cmpErr(firstErr, fmt.Errorf("space: create %q: %w", change.Rel, err))
+				continue
+			}
+			synced = append(synced, change.Rel)
+
 		case Collide:
 			// Preserve first. If this fails, nothing is overwritten.
 			if err := MoveAside(root, change.Rel, change.ConflictCopy); err != nil {

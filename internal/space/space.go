@@ -328,6 +328,14 @@ const (
 	// Pull takes the peer's version.
 	Pull ChangeKind = "pull"
 
+	// MakeDir creates a folder that exists only on the other machine.
+	//
+	// Only needed for a folder with nothing in it: any folder with a file gets
+	// created by WriteAtomic's MkdirAll when that file lands. Without this an
+	// empty folder would simply never appear, which is a quiet wrong answer
+	// rather than a loud one.
+	MakeDir ChangeKind = "make-dir"
+
 	// DeleteLocal removes a file the peer deleted.
 	DeleteLocal ChangeKind = "delete-local"
 
@@ -452,6 +460,31 @@ func Diff(local, remote *Manifest, base map[string]Entry, role Role, mode Mode, 
 		l, hasLocal := localIdx[rel]
 		r, hasRemote := remoteIdx[rel]
 		b, hadBase := base[rel]
+
+		// A directory is not a thing to transfer, and asking for one broke
+		// every space that had a subfolder.
+		//
+		// Scan records directories (IsDir: true) so the manifest describes the
+		// shape of the tree. Diff then compared them like any other entry, so
+		// a folder present only on the far side became a Pull, and pull() asked
+		// the peer for its bytes. serveFetch correctly refused — "that is a
+		// directory" — and that error failed the whole sync, which retried
+		// forever: the space sat at "offline", nothing moved, and the log
+		// filled with the same line. Only a flat folder of files ever worked.
+		//
+		// Directories need no transfer: WriteAtomic does MkdirAll on each
+		// file's parent, so the tree appears as its contents arrive. The one
+		// case that needs doing explicitly is an empty directory, which has no
+		// file to bring it into being.
+		if (hasLocal && l.IsDir) || (hasRemote && r.IsDir) {
+			if hasRemote && r.IsDir && !hasLocal {
+				plan.Changes = append(plan.Changes, Change{
+					Kind: MakeDir, Rel: rel,
+					Reason: "a new folder on the other machine",
+				})
+			}
+			continue
+		}
 
 		switch {
 		case hasLocal && hasRemote:

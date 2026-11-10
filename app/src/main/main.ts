@@ -257,6 +257,8 @@ function registerHandlers(): void {
 
   handle("pair:start", (address: string) => api.startPairing(address));
   handle("pair:confirm", (sessionId: string) => api.confirmPairing(sessionId));
+  handle("pair:attempt", () => api.pairAttempt());
+  handle("pair:sweep", () => api.sweep());
   handle("pair:cancel", (sessionId: string) => api.cancelPairing(sessionId));
 
   handle("unpair", (deviceId: string) => api.unpair(deviceId));

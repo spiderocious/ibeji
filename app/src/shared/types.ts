@@ -89,6 +89,67 @@ export interface PairingSession {
   expiresAt: string;
 }
 
+/**
+ * One step of a pairing attempt, as the timeline draws it.
+ *
+ * Pairing used to be a black box: a spinner that became either six digits or
+ * the sentence "the paired device is not reachable". That sentence cost a day
+ * of debugging a macOS permission that was never the problem — the real cause
+ * was a peer whose IP had changed. The daemon now records every step, so the
+ * window can show which one broke and what to do about it.
+ */
+export interface PairStep {
+  key: string;
+  title: string;
+  detail?: string;
+  state: "pending" | "running" | "ok" | "failed" | "skipped";
+  /** The underlying error, verbatim: a paraphrase loses what identifies it. */
+  error?: string;
+  /** The daemon's reading of why, in plain words. */
+  cause?: string;
+  /** The concrete next move, when there is one. */
+  fix?: string;
+  /** Offer the subnet sweep: this failure is consistent with a moved peer. */
+  scan?: boolean;
+  startedAt?: string;
+  endedAt?: string;
+}
+
+/** One pairing attempt and the log it produced. */
+export interface PairAttempt {
+  id: string;
+  address: string;
+  startedAt: string;
+  endedAt?: string;
+  sessionId?: string;
+  steps: PairStep[];
+  log: string[];
+  /** The key of the step that broke, empty when none did. */
+  failed?: string;
+  done: boolean;
+  ok: boolean;
+}
+
+/** One machine found by a subnet sweep. */
+export interface SweepResult {
+  address: string;
+  name?: string;
+  /** This machine, which always answers its own port. */
+  self?: boolean;
+  /** Whether the thing answering actually spoke Ìbejì's handshake. */
+  ibeji: boolean;
+}
+
+/** The result of sweeping this Mac's subnet for daemons. */
+export interface Sweep {
+  subnet: string;
+  port: number;
+  scanned: number;
+  took: string;
+  found: SweepResult[];
+  hint: string;
+}
+
 /** One check from `ibeji doctor`. */
 export interface DoctorCheck {
   name: string;
@@ -132,6 +193,8 @@ export interface IbejiBridge {
   startPairing(address: string): Promise<Result<PairingSession>>;
   confirmPairing(sessionId: string): Promise<Result<{ device: Device }>>;
   cancelPairing(sessionId: string): Promise<Result<void>>;
+  pairAttempt(): Promise<Result<{ attempt: PairAttempt | null }>>;
+  sweep(): Promise<Result<Sweep>>;
 
   unpair(deviceId: string): Promise<Result<void>>;
   /** Point the daemon at the peer's new address. Keys stay pinned. */

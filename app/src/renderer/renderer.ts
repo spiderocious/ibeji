@@ -18,6 +18,9 @@ import type {
   Device,
   IbejiBridge,
   PairingSession,
+  PairAttempt,
+  PairStep,
+  Sweep,
   PendingPrompt,
   PortMeta,
   PortRow,
@@ -81,6 +84,37 @@ interface State {
   candidates: Candidate[];
   hint: string | undefined;
   pairing: PairingSession | undefined;
+  /**
+   * The pairing modal: open from the moment Pair is clicked until it is
+   * dismissed.
+   *
+   * Clicking Pair used to close the overlay and go silent for up to fifteen
+   * seconds, then either show six digits or one sentence. No feedback, no way
+   * to see where it got to, nothing to copy. This holds the attempt the
+   * daemon is recording so the window can draw it as a timeline while it
+   * happens.
+   */
+  pairModal:
+    | {
+        address: string;
+        /** The daemon's step-by-step record, polled while the modal is open. */
+        attempt: PairAttempt | undefined;
+        /** True while a start or retry is in flight. */
+        busy: boolean;
+        /** A sweep's results, once asked for. */
+        sweep: Sweep | undefined;
+        sweepBusy: boolean;
+        /** Show the raw log rather than the timeline. */
+        showLog: boolean;
+      }
+    | undefined;
+  /**
+   * The explanation panel behind the notice's "Why?" button.
+   *
+   * It used to navigate to the Health tab, which is not an explanation — it
+   * is a filing cabinet. This holds the actual reason.
+   */
+  whyOpen: boolean;
   /** Set when the daemon cannot be reached; everything else is stale then. */
   daemonDown: string | undefined;
   /** A transient message shown under the header. */
@@ -114,6 +148,8 @@ const state: State = {
   candidates: [],
   hint: undefined,
   pairing: undefined,
+  pairModal: undefined,
+  whyOpen: false,
   daemonDown: undefined,
   notice: undefined,
   update: undefined,
@@ -200,6 +236,20 @@ async function refresh(): Promise<void> {
   // Pairing state lives in the daemon, so a window opened mid-ceremony shows
   // the code rather than an empty device list.
   state.pairing = unwrap(pending)?.pairing ?? undefined;
+  // And it shows it in the modal, which is where the ceremony now lives. A
+  // window reopened while the other Mac is waiting on a confirmation must
+  // put that in front of the person, not leave it a tab away.
+  if (state.pairing && !state.pairModal) {
+    state.pairModal = {
+      address: state.pairing.peerAddress,
+      attempt: undefined,
+      busy: false,
+      sweep: undefined,
+      sweepBusy: false,
+      showLog: false,
+    };
+    void pollPairAttempt();
+  }
   // A prompt nobody can see expires in sixty seconds and makes the product
   // look broken, so it is read on every refresh whichever tab is open.
   state.prompts = unwrap(prompts)?.prompts ?? [];
@@ -362,6 +412,210 @@ function pairingView(p: PairingSession): string {
       <div class="cd-foot">
         <button class="btn btn-tertiary" data-action="cancel-pairing">Cancel</button>
         <button class="btn btn-primary" data-action="confirm-pairing">They match — confirm</button>
+      </div>
+    </div>`;
+}
+
+/**
+ * The pairing modal: a timeline of what is happening, while it happens.
+ *
+ * The thing this replaces was a black box. Clicking Pair dismissed the
+ * overlay and showed nothing for up to fifteen seconds; then either the
+ * six-digit code appeared, or a single sentence did — "the paired device is
+ * not reachable" — with no indication of which part had failed, no error to
+ * read, and nothing to copy. A person watching that cannot tell a typo from a
+ * dead network from a macOS permission block from a peer that moved, and all
+ * four need different responses. One of them cost a day.
+ *
+ * So the ceremony shows its work. Every step of the handshake is a row, drawn
+ * from the daemon's own record rather than guessed at here: reading the
+ * address, opening the connection, verifying the channel, reading the key,
+ * asking the name, deriving the digits, waiting for both confirmations. The
+ * one that broke is marked, and carries the real error, this daemon's reading
+ * of why, and the fix. Beneath it sits the log for this attempt alone — not
+ * the whole daemon log — with a Copy button, because the next thing a person
+ * does with a failure is show it to somebody.
+ */
+function pairModalView(): string {
+  const m = state.pairModal;
+  if (!m) return "";
+
+  // Before the daemon has answered once there is still something true to
+  // say: which address, and that it has started. A modal that opens empty is
+  // the old silence in a new frame.
+  const a = m.attempt;
+  const steps = a?.steps ?? [];
+  const failedStep = steps.find((s) => s.key === a?.failed);
+  const code = state.pairing;
+
+  const timeline = steps.length
+    ? steps.map(pairStepRow).join("")
+    : `<div class="pm-step is-running">
+         <span class="pm-mark"></span>
+         <div class="pm-text"><div class="pm-title">Starting…</div></div>
+       </div>`;
+
+  // The code, once there is one, is the point of the whole ceremony — so it
+  // sits above the timeline rather than below it, and the timeline becomes
+  // the supporting detail it now is.
+  const codeBlock = code
+    ? `<div class="pm-code">
+         <div class="figure figure-xl app-pairing-code">${esc(code.code.slice(0, 3))} ${esc(code.code.slice(3))}</div>
+         <p class="tx-body pm-code-hint">
+           The same six digits should be showing on ${esc(code.peerName)}.
+           Confirm on both machines.
+         </p>
+         <div class="pm-facts">
+           <div class="run-row"><span class="run-dev">Peer</span><span class="rec">${esc(code.peerName)}</span></div>
+           <div class="run-row"><span class="run-dev">Address</span><span class="rec">${esc(code.peerAddress)}</span></div>
+           <div class="run-row"><span class="run-dev">Key</span><span class="rec">${esc(code.peerFingerprint)}</span></div>
+         </div>
+       </div>`
+    : "";
+
+  // The failure panel. Cause first, then the fix, then the raw error — in
+  // that order deliberately: the error is the least useful of the three to
+  // somebody who is stuck, and putting it first is what made the old
+  // messages feel like a wall.
+  const failure = failedStep
+    ? `<div class="pm-fail">
+         <div class="pm-fail-head">Stopped at “${esc(failedStep.title)}”</div>
+         ${failedStep.cause ? `<p class="pm-cause">${esc(failedStep.cause)}</p>` : ""}
+         ${failedStep.fix ? `<p class="pm-fix"><strong>Try this.</strong> ${esc(failedStep.fix)}</p>` : ""}
+         ${failedStep.error ? `<pre class="pm-err">${esc(failedStep.error)}</pre>` : ""}
+       </div>`
+    : "";
+
+  // The sweep. Offered only when the failure is one a sweep can resolve — a
+  // timeout or a name that would not resolve — because on a refused
+  // connection the machine is right there and scanning is noise.
+  const sweepBlock = failedStep?.scan ? pairSweepView(m) : "";
+
+  const log = a?.log ?? [];
+  const logBlock = m.showLog
+    ? `<pre class="pm-log" id="pm-log">${esc(log.join("\n") || "Nothing logged yet.")}</pre>`
+    : "";
+
+  // Buttons change with the state, because the useful action does. While it
+  // is running the only honest option is to abandon it; once it has failed,
+  // retrying is the first thing anyone reaches for.
+  const running = !a?.done && !code;
+  const acts = code
+    ? `<button class="btn btn-tertiary" data-action="cancel-pairing">Cancel</button>
+       <button class="btn btn-primary" data-action="confirm-pairing">They match — confirm</button>`
+    : running
+      ? `<button class="btn btn-tertiary" data-action="pm-close">Stop</button>`
+      : `<button class="btn btn-tertiary" data-action="pm-close">Close</button>
+         <button class="btn btn-primary" data-action="pm-retry"${m.busy ? " disabled" : ""}>
+           ${m.busy ? "Trying…" : "Try again"}
+         </button>`;
+
+  return `
+    <div class="pm-backdrop" data-action="pm-close-bg">
+      <div class="pm-sheet" role="dialog" aria-modal="true" aria-label="Pairing">
+        <div class="pm-head">
+          <div>
+            <div class="tx-overline">Pairing</div>
+            <div class="pm-addr">${esc(m.address)}</div>
+          </div>
+          <div class="pm-head-acts">
+            <button class="btn btn-tertiary btn-sm" data-action="pm-toggle-log">
+              ${m.showLog ? "Hide log" : "Show log"}
+            </button>
+            <button class="btn btn-tertiary btn-sm" data-action="pm-copy-log"
+                    title="Copy this attempt's log">Copy</button>
+          </div>
+        </div>
+        <div class="pm-body">
+          ${codeBlock}
+          <div class="pm-steps">${timeline}</div>
+          ${failure}
+          ${sweepBlock}
+          ${logBlock}
+        </div>
+        <div class="pm-foot">${acts}</div>
+      </div>
+    </div>`;
+}
+
+/** One row of the pairing timeline. */
+function pairStepRow(s: PairStep): string {
+  // Duration is shown only where it is informative. "0ms" against every step
+  // is noise, and against a timeout the elapsed time IS the finding.
+  const ms =
+    s.startedAt && s.endedAt
+      ? new Date(s.endedAt).getTime() - new Date(s.startedAt).getTime()
+      : 0;
+  const took = ms >= 150 ? `<span class="pm-took">${fmtMs(ms)}</span>` : "";
+  return `
+    <div class="pm-step is-${esc(s.state)}">
+      <span class="pm-mark" aria-hidden="true"></span>
+      <div class="pm-text">
+        <div class="pm-title">${esc(s.title)}${took}</div>
+        ${s.detail ? `<div class="pm-detail">${esc(s.detail)}</div>` : ""}
+        ${
+          s.state !== "failed" && s.error
+            ? `<div class="pm-warn">${esc(s.error)}</div>`
+            : ""
+        }
+      </div>
+    </div>`;
+}
+
+function fmtMs(ms: number): string {
+  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+}
+
+/**
+ * The subnet sweep, offered when the peer may have moved.
+ *
+ * This is the part that answers the question the old error could not. A
+ * timeout means nothing is at that address; the overwhelmingly likely reason
+ * on a home network is that the router handed the other Mac a different one.
+ * Rather than telling somebody to go and find it, the daemon looks — and the
+ * result is a list of addresses with a Pair button on each.
+ */
+function pairSweepView(m: NonNullable<State["pairModal"]>): string {
+  if (!m.sweep) {
+    return `
+      <div class="pm-sweep">
+        <div class="pm-sweep-head">Find it on this network</div>
+        <p class="tx-body">An address that goes unanswered usually means the other Mac
+        was given a new one. Ìbejì can look for it.</p>
+        <button class="btn btn-secondary btn-sm" data-action="pm-sweep"${m.sweepBusy ? " disabled" : ""}>
+          ${m.sweepBusy ? "Looking…" : "Scan this network"}
+        </button>
+      </div>`;
+  }
+
+  const others = m.sweep.found.filter((f) => !f.self);
+  const rows = others
+    .map(
+      (f) => `
+      <div class="dev-row">
+        ${deviceMark(true)}
+        <div class="dev-id">
+          <div class="dev-name">${esc(f.name || "Unnamed Mac")}</div>
+          <div class="dev-addr">${esc(f.address)}</div>
+        </div>
+        <div class="dev-meta">
+          ${f.ibeji ? "" : `<span class="sl sl-attention"><span class="dot"></span>not Ìbejì</span>`}
+          <button class="btn btn-primary btn-sm" data-pair="${esc(f.address)}">Pair</button>
+        </div>
+      </div>`,
+    )
+    .join("");
+
+  return `
+    <div class="pm-sweep">
+      <div class="pm-sweep-head">Found on ${esc(m.sweep.subnet)}</div>
+      <p class="tx-body">${esc(m.sweep.hint)}</p>
+      ${rows}
+      <div class="tx-micro pm-sweep-foot">
+        Checked ${m.sweep.scanned} addresses on port ${m.sweep.port} in ${esc(m.sweep.took)}.
+        <button class="btn btn-tertiary btn-sm" data-action="pm-sweep"${m.sweepBusy ? " disabled" : ""}>
+          ${m.sweepBusy ? "Looking…" : "Scan again"}
+        </button>
       </div>
     </div>`;
 }
@@ -927,27 +1181,186 @@ function noticeView(): string {
   if (!state.notice) return "";
   const n = state.notice;
   // A banner that only states a problem leaves the reader stuck. When the
-  // peer is unreachable the two things worth doing are to look at why, and
+  // peer is unreachable the two things worth doing are to understand why, and
   // to say where it moved to — so offer both rather than making someone go
   // and find them.
   const unreachable = /not reachable|unreachable|no route/i.test(n.text);
-  const actions =
-    unreachable && state.tab !== "health"
-      ? `<span class="banner-acts">
-           <button class="btn btn-tertiary btn-sm" data-action="go-health">Why?</button>
-           ${state.devices.length > 0
+  const actions = unreachable
+    ? `<span class="banner-acts">
+         <button class="btn btn-tertiary btn-sm" data-action="why">
+           ${state.whyOpen ? "Hide" : "Why?"}
+         </button>
+         ${
+           state.devices.length > 0
              ? `<button class="btn btn-tertiary btn-sm" data-action="reconnect">Reconnect…</button>`
-             : ""}
-         </span>`
-      : "";
+             : ""
+         }
+       </span>`
+    : "";
   return `<div class="banner banner-${n.tone === "live" ? "live" : "attention"}">
     <span>${esc(n.text)}</span>${actions}
-  </div>`;
+  </div>${state.whyOpen && unreachable ? whyView() : ""}`;
+}
+
+/**
+ * Why the other Mac is unreachable.
+ *
+ * "Why?" used to navigate to the Health tab. That is not an answer — it is a
+ * filing cabinet, and handing somebody a log when they asked a question is
+ * the thing that makes software feel contemptuous. This says what is actually
+ * known, in order of how likely it is, and each entry carries the check that
+ * confirms or rules it out.
+ *
+ * The ordering is from a real failure. The address was stale — the other Mac
+ * had moved from .147 to .39 when the network changed subnets — and that
+ * possibility was never mentioned anywhere in the product, so a day went into
+ * the macOS permission instead. A moved address goes first now, because on a
+ * home network with DHCP it is the single most likely cause and the only one
+ * Ìbejì can resolve by itself.
+ */
+function whyView(): string {
+  const dev = state.devices[0];
+  const addr = dev?.address ?? "the address you gave";
+  // The daemon's own last word on the subject, when there is one: the far
+  // end's error beats any guess made here.
+  const reported = state.health?.there?.unreachable;
+
+  const reasons: { title: string; body: string; action?: string }[] = [
+    {
+      title: "The other Mac was given a new address",
+      body:
+        `Ìbejì is dialling ${addr}. A router hands out addresses on a lease, so a ` +
+        `restart or an overnight renewal can move the other Mac somewhere else — and ` +
+        `if the whole network changed subnets, every address it knew is now wrong. ` +
+        `Nothing answers, and that looks identical to the machine being switched off.`,
+      action: `<button class="btn btn-secondary btn-sm" data-action="why-sweep">Scan this network for it</button>`,
+    },
+    {
+      title: "Ìbejì is not running over there",
+      body:
+        `The daemon has to be up on both machines. If that Mac was restarted and ` +
+        `Ìbejì has not been opened since, nothing is listening.`,
+      action: `<span class="tx-micro">Open Ìbejì on the other Mac, or run <code class="rec">ibeji doctor</code> on it.</span>`,
+    },
+    {
+      title: "macOS is blocking the connection",
+      body:
+        `Local Network permission is per-app and macOS re-asks after every update, ` +
+        `because each new build counts as a new app. A denial is silent: the ` +
+        `connection fails with the same error a dead network gives.`,
+      action: `<span class="tx-micro">System Settings → Privacy &amp; Security → Local Network → switch Ìbejì on.</span>`,
+    },
+    {
+      title: "The two Macs are on different networks",
+      body:
+        `Same Wi-Fi name is not always the same network. A guest network isolates ` +
+        `clients from each other, and a phone hotspot is a network of its own.`,
+      action: `<span class="tx-micro">Compare the gateway on both machines — the Health tab shows it.</span>`,
+    },
+  ];
+
+  return `
+    <div class="why">
+      <div class="why-head">Why it cannot reach the other Mac</div>
+      ${
+        reported
+          ? `<div class="why-reported">
+               <span class="tx-micro">What the daemon last reported</span>
+               <pre class="pm-err">${esc(reported)}</pre>
+             </div>`
+          : ""
+      }
+      <p class="tx-body why-intro">From this side these four look almost the same, so they are
+      listed in the order they are likely. The first one is the one Ìbejì can check for you.</p>
+      ${reasons
+        .map(
+          (r, i) => `
+        <div class="why-item">
+          <div class="why-n">${i + 1}</div>
+          <div class="why-text">
+            <div class="why-title">${esc(r.title)}</div>
+            <p class="tx-body">${r.body}</p>
+            ${r.action ? `<div class="why-act">${r.action}</div>` : ""}
+          </div>
+        </div>`,
+        )
+        .join("")}
+      <div class="why-foot">
+        <button class="btn btn-tertiary btn-sm" data-action="go-health">Open Health for the full picture</button>
+      </div>
+    </div>`;
+}
+
+/**
+ * Scroll positions, kept across re-renders.
+ *
+ * render() replaces the whole of #root, which destroys the scroll container
+ * and silently resets it to the top. With a 5-second poll that means any list
+ * you are reading jerks back to the top every five seconds — worst on Health,
+ * where the daemon log is long and also refreshes, so it looked like the log
+ * was doing it. It was not the log; it was every tab, all the time.
+ *
+ * Keyed by tab so switching tabs does not inherit a position from a list of a
+ * different length.
+ */
+const scrollMemory = new Map<string, number>();
+
+/**
+ * The elements whose scroll position is worth remembering.
+ *
+ * Selectors, not ids: the main scroll area is `.app-main`, a class, and
+ * looking it up by id found nothing — so the log pane was preserved and every
+ * tab's actual list still jerked. Caught by the scroll test, which is why it
+ * asserts the main area separately from the log.
+ */
+const SCROLLERS = [".app-main", "#hl-log", "#sh-out", ".pm-body", "#pm-log"];
+
+/**
+ * The key a scroller's position is filed under.
+ *
+ * Per tab, because a short list must not inherit an offset from a long one.
+ * The modal is the exception: it floats above whichever tab is showing, so
+ * keying it by tab would lose its place the moment anything underneath
+ * changed — and toggling its log is exactly such a change.
+ */
+function scrollKey(sel: string): string {
+  return sel.startsWith(".pm-") || sel.startsWith("#pm-") ? `modal:${sel}` : `${state.tab}:${sel}`;
+}
+
+function rememberScroll(): void {
+  for (const sel of SCROLLERS) {
+    const el = document.querySelector(sel);
+    // A container that is not scrolled is not worth remembering: storing 0
+    // would overwrite a real position when a tab briefly renders empty.
+    if (el && el.scrollTop > 0) scrollMemory.set(scrollKey(sel), el.scrollTop);
+  }
+}
+
+/**
+ * Put the scroll positions back.
+ *
+ * Synchronous, before the browser paints: doing this in requestAnimationFrame
+ * lets one frame render at the top, which reads as exactly the jerk this is
+ * meant to remove.
+ */
+function restoreScroll(): void {
+  for (const sel of SCROLLERS) {
+    const want = scrollMemory.get(scrollKey(sel));
+    if (want === undefined || want <= 0) continue;
+    const el = document.querySelector(sel);
+    if (!el) continue;
+    // Clamp: the list may have grown shorter since, and assigning past the
+    // end would land at the bottom rather than where the reader was.
+    el.scrollTop = Math.min(want, Math.max(0, el.scrollHeight - el.clientHeight));
+  }
 }
 
 function render(): void {
   const root = document.getElementById("root");
   if (!root) return;
+
+  // Read before the DOM is thrown away; written back after it is rebuilt.
+  rememberScroll();
 
   if (state.daemonDown) {
     root.innerHTML = `<div class="app-titlebar-pad"></div><main class="app-main">${daemonDownView()}</main>`;
@@ -1000,6 +1413,7 @@ function render(): void {
       ${updateView()}
       ${noticeView()}
       <main class="app-main">${state.prompts.map(promptView).join("")}</main>`;
+    restoreScroll();
     return;
   }
 
@@ -1095,7 +1509,10 @@ function render(): void {
     ${updateView()}
     ${noticeView()}
     ${controls ? `<div class="app-controls">${controls}</div>` : ""}
-    <main class="app-main">${body}</main>`;
+    <main class="app-main">${body}</main>
+    ${pairModalView()}`;
+
+  restoreScroll();
 }
 
 // --- dialogs ----------------------------------------------------------------
@@ -1182,10 +1599,205 @@ function ask(opts: {
 
 // --- intents ----------------------------------------------------------------
 
+/**
+ * Begin pairing, with the modal open from the first click.
+ *
+ * The old version awaited a call that can take fifteen seconds and then
+ * called refresh(). Between those two things the window showed nothing at
+ * all: the overlay closed, no spinner, no address, no indication anything was
+ * happening. That silence is what "clicking pair has no feedback until it
+ * failed or succeeds" describes, and it is why a failure felt like the app
+ * had simply ignored the click.
+ *
+ * Now the modal opens first and the daemon's record is polled while the
+ * handshake runs, so every step appears as it completes.
+ */
 async function startPairing(address: string): Promise<void> {
-  const res = await window.ibeji.startPairing(address);
-  unwrap(res);
-  await refresh();
+  // Keep the sweep's results across a retry: they are how the person got to
+  // this address, and throwing them away means sweeping again to try the next
+  // machine on the list. Everything else starts clean — a stale failure panel
+  // under a fresh code reads as the new attempt having failed too, which a
+  // screenshot caught.
+  const keptSweep = state.pairModal?.sweep;
+  state.pairing = undefined;
+  state.pairModal = {
+    address,
+    attempt: undefined,
+    busy: true,
+    sweep: keptSweep,
+    sweepBusy: false,
+    // The log starts hidden: the timeline is the answer for almost everybody,
+    // and opening onto a wall of log lines buries it.
+    showLog: false,
+  };
+  render();
+
+  // Poll the daemon's record while the call is in flight. The call itself
+  // does not return until the ceremony either has a code or has failed, so
+  // without this the timeline would arrive all at once at the end — which
+  // is the silence again, just better drawn.
+  const poll = window.setInterval(() => void pollPairAttempt(), 300);
+  try {
+    const res = await window.ibeji.startPairing(address);
+    if (!res.ok) {
+      // Do not notify() here. The modal is showing the failure in full, with
+      // the cause and the fix; a banner saying the same thing more briefly
+      // on top of it is noise.
+      await pollPairAttempt();
+      return;
+    }
+    await refresh();
+  } finally {
+    window.clearInterval(poll);
+    if (state.pairModal) state.pairModal.busy = false;
+    // One last read, so the timeline ends on the daemon's final word rather
+    // than whatever the last poll happened to catch.
+    await pollPairAttempt();
+  }
+}
+
+/** Read the daemon's record of the attempt into the modal. */
+async function pollPairAttempt(): Promise<void> {
+  if (!state.pairModal) return;
+  const res = await window.ibeji.pairAttempt();
+  if (!res.ok) return;
+  const a = res.value.attempt;
+  if (!a) return;
+  // The modal may have been closed and reopened against a different address
+  // while this was in flight; a stale attempt must not overwrite the new one.
+  if (state.pairModal.address && a.address && !addrMatches(a.address, state.pairModal.address)) {
+    return;
+  }
+  state.pairModal.attempt = a;
+  // The code lives in the daemon's pairing session, not in the attempt, so
+  // pick it up as soon as the ceremony reaches that step.
+  if (a.sessionId && !state.pairing) {
+    const pending = await window.ibeji.pending();
+    if (pending.ok) state.pairing = pending.value.pairing ?? undefined;
+  }
+  render();
+}
+
+/**
+ * Whether two addresses mean the same thing.
+ *
+ * The daemon fills in the default port, so "192.168.1.39" from the window and
+ * "192.168.1.39:7749" from the daemon are the same attempt. Comparing the raw
+ * strings would discard every poll.
+ */
+function addrMatches(a: string, b: string): boolean {
+  const norm = (v: string) => (v.includes(":") ? v : `${v}:7749`);
+  return norm(a.trim()) === norm(b.trim());
+}
+
+/** Retry the attempt at the same address. */
+async function retryPairing(): Promise<void> {
+  const m = state.pairModal;
+  if (!m || m.busy) return;
+  // Clear the session first: a stale one from a previous attempt would make
+  // the modal render a code for a ceremony that is over.
+  if (state.pairing) {
+    await window.ibeji.cancelPairing(state.pairing.id);
+    state.pairing = undefined;
+  }
+  await startPairing(m.address);
+}
+
+/** Sweep this Mac's subnet from inside the modal. */
+async function sweepFromModal(): Promise<void> {
+  const m = state.pairModal;
+  if (!m || m.sweepBusy) return;
+  m.sweepBusy = true;
+  render();
+  const res = await window.ibeji.sweep();
+  m.sweepBusy = false;
+  if (!res.ok) {
+    notify(res.error.message, "attention");
+    render();
+    return;
+  }
+  m.sweep = res.value;
+  render();
+}
+
+/**
+ * Sweep from the "Why?" panel, where there is no modal yet.
+ *
+ * Opens the modal to hold the result, because that is where the found
+ * machines get a Pair button — and pairing is what somebody reading that
+ * panel is trying to do.
+ */
+async function sweepFromWhy(): Promise<void> {
+  const addr = state.devices[0]?.address ?? "";
+  state.pairModal = {
+    address: addr,
+    attempt: undefined,
+    busy: false,
+    sweep: undefined,
+    sweepBusy: true,
+    showLog: false,
+  };
+  render();
+  const res = await window.ibeji.sweep();
+  if (!state.pairModal) return;
+  state.pairModal.sweepBusy = false;
+  if (!res.ok) {
+    notify(res.error.message, "attention");
+    render();
+    return;
+  }
+  state.pairModal.sweep = res.value;
+  render();
+}
+
+/**
+ * Copy this attempt's log.
+ *
+ * This attempt's, not the daemon's whole log. When somebody is about to show
+ * a failure to another person, twenty lines about the pairing they just tried
+ * is useful and four thousand lines of daemon history is not. The header
+ * carries the address and the verdict so the paste stands on its own.
+ */
+async function copyAttemptLog(): Promise<void> {
+  const m = state.pairModal;
+  const a = m?.attempt;
+  if (!m) return;
+  const failed = a?.steps.find((st) => st.key === a.failed);
+  const lines = [
+    `Ìbejì pairing attempt`,
+    `address: ${m.address}`,
+    `version: ${state.self?.version ?? "unknown"}`,
+    a ? `started: ${a.startedAt}` : "",
+    failed
+      ? `failed at: ${failed.title}${failed.error ? ` — ${failed.error}` : ""}`
+      : a?.ok
+        ? `result: reached the code step`
+        : `result: in progress`,
+    failed?.cause ? `cause: ${failed.cause}` : "",
+    "",
+    ...(a?.log ?? []),
+  ].filter((l) => l !== "");
+
+  try {
+    await navigator.clipboard.writeText(lines.join("\n"));
+    notify("Copied this attempt's log.", "live");
+  } catch {
+    notify("Could not copy the log.", "attention");
+  }
+}
+
+/** Close the modal, abandoning any ceremony it was holding. */
+function closePairModal(): void {
+  // A code on screen means the far side may be waiting on a confirmation
+  // that is never coming, so cancel rather than just hiding the window.
+  const p = state.pairing;
+  if (p) void window.ibeji.cancelPairing(p.id).then(() => void refresh());
+  state.pairing = undefined;
+  state.pairModal = undefined;
+  // Forget where this modal was scrolled: the next attempt is a new story and
+  // must start at the top of it.
+  for (const sel of SCROLLERS) scrollMemory.delete(scrollKey(sel));
+  render();
 }
 
 async function confirmPairing(): Promise<void> {
@@ -1194,6 +1806,7 @@ async function confirmPairing(): Promise<void> {
   const res = await window.ibeji.confirmPairing(p.id);
   if (unwrap(res)) {
     state.pairing = undefined;
+    state.pairModal = undefined;
     notify("Paired. The link will come up in a moment.", "live");
   }
   await refresh();
@@ -1204,6 +1817,7 @@ async function cancelPairing(): Promise<void> {
   if (!p) return;
   await window.ibeji.cancelPairing(p.id);
   state.pairing = undefined;
+  state.pairModal = undefined;
   await refresh();
 }
 
@@ -1800,7 +2414,39 @@ document.addEventListener("click", (e) => {
       break;
     case "go-health":
       state.tab = "health";
+      state.whyOpen = false;
       void refresh();
+      break;
+    case "why":
+      // An explanation, in place, rather than a trip to the log viewer.
+      state.whyOpen = !state.whyOpen;
+      render();
+      break;
+    case "why-sweep":
+      void sweepFromWhy();
+      break;
+    case "pm-close":
+      closePairModal();
+      break;
+    case "pm-close-bg":
+      // Only a click on the backdrop itself closes; one that bubbled up from
+      // inside the sheet must not, or selecting log text dismisses the modal.
+      if (target === el) closePairModal();
+      break;
+    case "pm-retry":
+      void retryPairing();
+      break;
+    case "pm-sweep":
+      void sweepFromModal();
+      break;
+    case "pm-toggle-log":
+      if (state.pairModal) {
+        state.pairModal.showLog = !state.pairModal.showLog;
+        render();
+      }
+      break;
+    case "pm-copy-log":
+      void copyAttemptLog();
       break;
     case "reconnect":
       void reconnectPeer();
@@ -1954,3 +2600,23 @@ void checkUpdate(true);
 // And once a day, for a window left open for weeks — without this, the only
 // check is at launch, which a long-lived app never does again.
 setInterval(() => void checkUpdate(true), 24 * 60 * 60 * 1000);
+
+/**
+ * A hook for the UI tests.
+ *
+ * Some states cannot be reached from outside: the unreachable notice is raised
+ * by the daemon losing a peer, and a test cannot make that happen. Without a
+ * hook the only way to check the banner and its "Why?" explanation is to
+ * assert on strings in the built bundle, which proves the code was shipped and
+ * nothing about whether it works.
+ *
+ * So the trigger is exposed and nothing else. Every test still clicks the real
+ * button, through the real dispatch, against the real DOM — exactly as the
+ * window does when the daemon reports a peer gone.
+ */
+declare global {
+  interface Window {
+    __ibejiTest?: { notify: (text: string, tone: Tone) => void };
+  }
+}
+window.__ibejiTest = { notify };

@@ -17,6 +17,8 @@ import type {
   DoctorCheck,
   Mode,
   PairingSession,
+  PairAttempt,
+  Sweep,
   PendingPrompt,
   PortMeta,
   PortRow,
@@ -52,6 +54,8 @@ const bridge = {
   // --- pairing -------------------------------------------------------------
   startPairing: (address: string) => invoke<PairingSession>("pair:start", address),
   confirmPairing: (sessionId: string) => invoke<{ device: Device }>("pair:confirm", sessionId),
+  pairAttempt: () => invoke<{ attempt: PairAttempt | null }>("pair:attempt"),
+  sweep: () => invoke<Sweep>("pair:sweep"),
   cancelPairing: (sessionId: string) => invoke<void>("pair:cancel", sessionId),
 
   // --- intents -------------------------------------------------------------

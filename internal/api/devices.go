@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"runtime"
 	"time"
@@ -105,6 +106,22 @@ type DeviceState interface {
 	// PendingPairing reports a ceremony in flight, so a window opened or
 	// reopened mid-pairing shows the code rather than nothing.
 	PendingPairing() *PairingView
+
+	// LastPairAttempt is the step-by-step record of the last attempt, with
+	// its own log. Returned as `any` because the shape belongs to the daemon
+	// and the API only forwards it: putting the step types here would mean
+	// the HTTP layer owning a vocabulary it never reads.
+	//
+	// This is what the window draws as a timeline. Without it, a failed
+	// pairing is one sentence — "the paired device is not reachable" — which
+	// is what let a stale IP address masquerade as a macOS permission
+	// problem for a day.
+	LastPairAttempt() any
+
+	// SweepNetwork probes this machine's subnet for daemons, for when the
+	// peer has moved and mDNS cannot find it. The answer to "where did my
+	// other Mac go?" that the product could previously only shrug at.
+	SweepNetwork(ctx context.Context) (any, error)
 	BeginPairing(address string) (*PairingView, error)
 	ConfirmPairing(sessionID string) (*Device, error)
 	CancelPairing(sessionID string) error
@@ -308,6 +325,30 @@ func (s *Server) RegisterDeviceRoutes(state DeviceState) {
 			return
 		}
 		WriteJSON(w, nil)
+	})
+
+	s.Handle(Route{
+		Method: "GET", Path: "/pair/attempt",
+		Summary: "The last pairing attempt step by step, with its own log",
+	}, func(w http.ResponseWriter, r *http.Request) {
+		WriteJSON(w, map[string]any{"attempt": state.LastPairAttempt()})
+	})
+
+	s.Handle(Route{
+		Method: "POST", Path: "/pair/sweep", Mutating: true,
+		Summary: "Probe this Mac's subnet for Ìbejì daemons, to find a peer that moved",
+	}, func(w http.ResponseWriter, r *http.Request) {
+		// Mutating only in the sense that it touches the network; it changes
+		// no state. Marked so it sits behind the same confirmation as other
+		// outward-facing calls rather than being treated as a free read.
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		out, err := state.SweepNetwork(ctx)
+		if err != nil {
+			WriteError(w, err)
+			return
+		}
+		WriteJSON(w, out)
 	})
 
 	s.Handle(Route{

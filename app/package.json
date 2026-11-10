@@ -2,7 +2,7 @@
   "name": "ibeji-app",
   "version": "0.1.9",
   "private": true,
-  "description": "Ìbejì — the companion window. A client of the daemon's local HTTP API.",
+  "description": "\u00ccbej\u00ec \u2014 the companion window. A client of the daemon's local HTTP API.",
   "main": "out/main/main.js",
   "scripts": {
     "sync-ds": "./scripts/sync-design-system.sh",
@@ -14,7 +14,10 @@
     "dist": "npm run dist:arm64 && npm run dist:x64",
     "dist:arm64": "node scripts/build-binaries.mjs arm64 && npm run build && electron-builder --mac --arm64 --publish never && node scripts/verify-dmg.mjs arm64",
     "dist:x64": "node scripts/build-binaries.mjs amd64 && npm run build && electron-builder --mac --x64 --publish never && node scripts/verify-dmg.mjs x64",
-    "modal-check": "npm run build && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron test/modal-check.js"
+    "modal-check": "npm run build && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron test/modal-check.js",
+    "pair-check": "npm run build && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron test/pair-modal-check.js",
+    "scroll-check": "npm run build && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron test/scroll-check.js",
+    "why-check": "npm run build && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron test/why-check.js"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
@@ -25,7 +28,7 @@
   "build": {
     "appId": "com.ibeji.app",
     "productName": "Ibeji",
-    "copyright": "Ìbejì",
+    "copyright": "\u00ccbej\u00ec",
     "directories": {
       "output": "../dist",
       "buildResources": "assets"
@@ -56,14 +59,14 @@
       "identity": "-",
       "hardenedRuntime": false,
       "extendInfo": {
-        "NSLocalNetworkUsageDescription": "Ìbejì connects to your other Mac on this network. It never sends anything to the internet.",
+        "NSLocalNetworkUsageDescription": "\u00ccbej\u00ec connects to your other Mac on this network. It never sends anything to the internet.",
         "NSBonjourServices": [
           "_ibeji._tcp"
         ]
       }
     },
     "dmg": {
-      "title": "Ìbejì ${version}",
+      "title": "\u00ccbej\u00ec ${version}",
       "icon": "assets/icon.icns"
     },
     "afterSign": "scripts/adhoc-sign.cjs"

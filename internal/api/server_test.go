@@ -697,10 +697,13 @@ func TestMutatingRoutesAreMarked(t *testing.T) {
 // --- fake state -------------------------------------------------------------
 
 type fakeState struct {
-	self    SelfInfo
-	device  *Device
-	cands   []Candidate
-	pairing *PairingView
+	self     SelfInfo
+	device   *Device
+	cands    []Candidate
+	pairing  *PairingView
+	attempt  any
+	sweep    any
+	sweepErr error
 
 	renamedTo string
 	mode      Mode
@@ -748,6 +751,15 @@ func (f *fakeState) ReconnectAt(address string) (*Device, error) {
 }
 
 func (f *fakeState) PendingPairing() *PairingView { return f.pairing }
+
+func (f *fakeState) LastPairAttempt() any { return f.attempt }
+
+func (f *fakeState) SweepNetwork(ctx context.Context) (any, error) {
+	if f.sweepErr != nil {
+		return nil, f.sweepErr
+	}
+	return f.sweep, nil
+}
 
 func (f *fakeState) BeginPairing(address string) (*PairingView, error) {
 	if f.pairing == nil {

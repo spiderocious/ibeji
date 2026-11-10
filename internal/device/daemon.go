@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,6 +42,14 @@ type Daemon struct {
 	secrets  identity.SecretStore
 	pairer   *link.Pairer
 	registry *discovery.Registry
+
+	// attempt holds the last pairing attempt and the log it produced, so the
+	// window can draw a timeline of where the ceremony got to rather than a
+	// spinner that turns into one sentence. Guarded by attemptMu: the HTTP
+	// handler serving it runs concurrently with the pairing that writes it.
+	attemptMu sync.Mutex
+	attempt   *PairAttempt
+	attemptN  int
 
 	// events lets the daemon tell the window what changed, so it does not
 	// poll. Nil in tests that are not about events.
@@ -414,9 +423,42 @@ func (d *Daemon) Unpair(deviceID string) error {
 // is closed afterwards: pairing establishes trust, and the ordinary link
 // supervisor makes the trusted connection.
 func (d *Daemon) BeginPairing(address string) (*api.PairingView, error) {
+	// Every exit from here records where it got to. The window reads that
+	// record and draws a timeline, which is the difference between "the
+	// paired device is not reachable" and "nothing answered at
+	// 192.168.1.147 — the address probably changed, sweep the network".
+	a := d.newAttempt(address)
+
+	a.begin("ready")
 	if d.store.Paired() {
+		a.fail("ready", identity.ErrAlreadyPaired)
 		return nil, identity.ErrAlreadyPaired
 	}
+	a.ok("ready", "not paired yet")
+
+	// Refuse this machine's own address.
+	//
+	// The sweep lists every daemon on the subnet, including this one, so a
+	// Pair button pointing here is one click away. Without this the daemon
+	// dialled itself, completed the handshake, and displayed six digits to
+	// compare against the same six digits on the same screen — a pairing that
+	// cannot mean anything and leaves a ceremony stuck open. Caught by
+	// screenshotting the sweep rather than by any assertion.
+	if d.isSelfAddress(address) {
+		err := fmt.Errorf("device: that is this Mac's own address — pair with the other one")
+		a.fail("ready", err)
+		return nil, err
+	}
+
+	// Check the address before dialling it, so a typo is named as a typo
+	// rather than surfacing fifteen seconds later as a timeout.
+	a.begin("address")
+	dialAddr, err := normalizePairAddress(address)
+	if err != nil {
+		a.fail("address", err)
+		return nil, err
+	}
+	a.ok("address", dialAddr)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -432,28 +474,41 @@ func (d *Daemon) BeginPairing(address string) (*api.PairingView, error) {
 	// needs to know whether the machine was unreachable, refused the
 	// connection, or answered as somebody else — three different problems
 	// with three different answers.
-	d.Logger.Info("pair: connecting", "step", "connect", "address", address)
-	conn, err := transport.Dial(ctx, address)
+	a.begin("connect")
+	d.Logger.Info("pair: connecting", "step", "connect", "address", dialAddr)
+	conn, err := transport.Dial(ctx, dialAddr)
 	if err != nil {
 		d.Logger.Warn("pair: could not connect", "step", "connect",
-			"address", address, "err", err)
+			"address", dialAddr, "err", err)
+		// Dial covers both reaching the machine and completing TLS with it.
+		// Attributing the failure to the right one of those two steps is
+		// what tells "nothing is there" apart from "something is there but
+		// it is not Ìbejì" — so look at the error and place it.
+		a.fail(connectOrTLS(err), err)
 		return nil, err
 	}
 	defer conn.Close()
-	d.Logger.Info("pair: connected", "step", "connect", "address", address)
+	a.ok("connect", "reached "+dialAddr)
+	a.ok("tls", "encrypted channel established")
+	d.Logger.Info("pair: connected", "step", "connect", "address", dialAddr)
 
 	// The key the peer presented is what the six digits are derived from.
+	a.begin("key")
 	keyed, ok := conn.(link.KeyedConn)
 	if !ok {
-		return nil, fmt.Errorf("device: this connection cannot report its peer's key")
+		err := fmt.Errorf("device: this connection cannot report its peer's key")
+		a.fail("key", err)
+		return nil, err
 	}
 	pub, err := keyed.PeerKey()
 	if err != nil {
 		d.Logger.Warn("pair: no key from the peer", "step", "key", "err", err)
+		a.fail("key", err)
 		return nil, err
 	}
-	d.Logger.Info("pair: got the peer's key", "step", "key",
-		"fingerprint", identity.Fingerprint(pub))
+	fp := identity.Fingerprint(pub)
+	a.ok("key", fp)
+	d.Logger.Info("pair: got the peer's key", "step", "key", "fingerprint", fp)
 
 	// Ask the peer its name, retrying briefly.
 	//
@@ -461,7 +516,8 @@ func (d *Daemon) BeginPairing(address string) (*api.PairingView, error) {
 	// picked it up, so a single attempt races and loses about half the time —
 	// which showed up as a ceremony displaying a bare IP instead of "Desktop".
 	// A few quick retries close that window without delaying the common case.
-	name := address
+	a.begin("name")
+	name := dialAddr
 	var lastErr error
 	for attempt := 0; attempt < 5; attempt++ {
 		got, _, err := exchangeHello(ctx, conn, d.store.Name(), false, d.peerPort())
@@ -481,19 +537,202 @@ func (d *Daemon) BeginPairing(address string) (*api.PairingView, error) {
 		// stands in, and the fingerprint beside the code is what matters.
 		d.Logger.Warn("device: name exchange failed during pairing",
 			"step", "name", "err", lastErr)
+		a.warn("name", "it would not say — using the address instead", lastErr)
+	} else {
+		a.ok("name", name)
 	}
 
+	a.begin("code")
 	session, err := d.pairer.Begin(link.PairingOffer{
 		DeviceName: name,
 		PublicKey:  pub,
-		Address:    address,
+		Address:    dialAddr,
 	})
 	if err != nil {
+		a.fail("code", err)
 		return nil, err
 	}
+	a.ok("code", session.Code)
+	a.succeed(session.ID)
+	// The ceremony is now waiting on two people, which is a step like any
+	// other and the one most likely to be abandoned halfway.
+	a.begin("confirm")
 	d.Logger.Info("device: pairing started", "step", "code",
-		"peer", name, "address", address)
+		"peer", name, "address", dialAddr)
 	return api.PairingViewFrom(session), nil
+}
+
+// isSelfAddress reports whether an address is this daemon's own listener.
+//
+// Host AND port, not host alone. Two daemons on one machine is how the e2e
+// suite works and how anyone would try the product before owning a second
+// Mac, so "my IP on a different port" is a legitimate peer. An earlier
+// version compared only the host and refused those, which broke pairing
+// outright — the e2e run caught it within one cycle.
+//
+// What this does catch is the case that matters: the sweep lists this machine
+// among its results, so a Pair button pointing at our own listener is one
+// click away, and dialling it produced a ceremony against ourselves.
+func (d *Daemon) isSelfAddress(address string) bool {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return false
+	}
+	if host == "" || port == "" {
+		return false
+	}
+	// A different port is a different daemon, wherever it runs.
+	if port != fmt.Sprint(d.peerPort()) {
+		return false
+	}
+	ip := net.ParseIP(host)
+	if ip != nil && ip.IsLoopback() {
+		return true
+	}
+	for _, a := range d.Self().Addresses {
+		if h, _, err := net.SplitHostPort(a); err == nil {
+			a = h
+		}
+		if strings.EqualFold(a, host) {
+			return true
+		}
+	}
+	return false
+}
+
+// newAttempt starts recording a pairing attempt, replacing the last one.
+//
+// One at a time is deliberate: v1 pairs exactly one peer, so two attempts in
+// flight is already a confused state, and keeping a history of them would put
+// a chooser in front of a person who wants to know why the last one failed.
+func (d *Daemon) newAttempt(address string) *PairAttempt {
+	d.attemptMu.Lock()
+	defer d.attemptMu.Unlock()
+	d.attemptN++
+	a := newPairAttempt(fmt.Sprintf("attempt-%d", d.attemptN), address)
+	a.logf("pairing with %s", address)
+	a.logf("this Mac is %s", d.store.Name())
+	d.attempt = a
+	return a
+}
+
+// LastPairAttempt implements api.DeviceState.
+//
+// Returns `any` so a nil attempt marshals as JSON null rather than as a typed
+// nil pointer wrapped in a non-nil interface, which is the classic Go trap
+// that would have the window render an empty timeline instead of none.
+func (d *Daemon) LastPairAttempt() any {
+	d.attemptMu.Lock()
+	a := d.attempt
+	d.attemptMu.Unlock()
+	if a == nil {
+		return nil
+	}
+	return a.View()
+}
+
+// SweepNetwork implements api.DeviceState.
+func (d *Daemon) SweepNetwork(ctx context.Context) (any, error) {
+	return d.Sweep(ctx)
+}
+
+// finishAttempt closes the open attempt once the ceremony resolves either way.
+func (d *Daemon) finishAttempt(ok bool, detail string) {
+	d.attemptMu.Lock()
+	a := d.attempt
+	d.attemptMu.Unlock()
+	if a != nil {
+		a.finish(ok, detail)
+	}
+}
+
+// normalizePairAddress checks an address and fills in the default port.
+//
+// Catching a malformed address here is what turns a fifteen-second wait into
+// an immediate, specific answer. "192.168.1.39" alone is accepted and gains
+// the default port, because that is what a person types.
+func normalizePairAddress(address string) (string, error) {
+	addr := strings.TrimSpace(address)
+	if addr == "" {
+		return "", fmt.Errorf("device: no address given")
+	}
+	// Strip a scheme somebody pasted from a browser.
+	addr = strings.TrimPrefix(strings.TrimPrefix(addr, "http://"), "https://")
+	addr = strings.TrimSuffix(addr, "/")
+
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		// No port at all is the common, intended case.
+		if strings.Contains(addr, ":") && strings.Count(addr, ":") > 1 {
+			return "", fmt.Errorf("device: %q is not an address this daemon can dial", address)
+		}
+		host, port = addr, fmt.Sprint(link.DefaultPort)
+	}
+	if host == "" {
+		return "", fmt.Errorf("device: %q has no host part", address)
+	}
+	// A bare hostname is allowed — a .local name works where mDNS does — but
+	// it still has to look like one. Without this check a sentence typed into
+	// the address box sailed through and failed fifteen seconds later as a
+	// DNS lookup, which reads as a network problem rather than a typo.
+	if !isPlausibleHost(host) {
+		return "", fmt.Errorf("device: %q is not a host name or IP address", host)
+	}
+	if n, err := strconv.Atoi(port); err != nil || n <= 0 || n > 65535 {
+		return "", fmt.Errorf("device: %q is not a usable port", port)
+	}
+	// A bare host that is not an IP is allowed through: a .local name works
+	// where mDNS does, and resolution failure is diagnosed as its own cause.
+	return net.JoinHostPort(host, port), nil
+}
+
+// isPlausibleHost reports whether a string could be a host name or IP.
+//
+// Deliberately permissive about what a name may contain and strict about what
+// it may not: letters, digits, dots and hyphens are a name, and anything else
+// — a space above all — is a typo worth naming at once.
+func isPlausibleHost(host string) bool {
+	if host == "" || len(host) > 253 {
+		return false
+	}
+	if net.ParseIP(host) != nil {
+		return true
+	}
+	// A name cannot begin or end with a dot or hyphen, and cannot hold an
+	// empty label.
+	if strings.HasPrefix(host, ".") || strings.HasSuffix(host, ".") ||
+		strings.HasPrefix(host, "-") || strings.HasSuffix(host, "-") ||
+		strings.Contains(host, "..") {
+		return false
+	}
+	for _, r := range host {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z',
+			r >= '0' && r <= '9', r == '.', r == '-', r == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// connectOrTLS decides which step a failed dial belongs to.
+//
+// Dial both reaches the machine and completes the handshake, so one error
+// covers two very different problems. A timeout means nothing was there; a TLS
+// error means something was, and it was not Ìbejì. Marking the right step is
+// the whole point of the timeline.
+func connectOrTLS(err error) string {
+	if err == nil {
+		return "connect"
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "tls"), strings.Contains(msg, "certificate"),
+		strings.Contains(msg, "handshake"), strings.Contains(msg, "bad record"):
+		return "tls"
+	}
+	return "connect"
 }
 
 // PendingPairing implements api.DeviceState.
@@ -519,12 +758,18 @@ func (d *Daemon) ConfirmPairing(sessionID string) (*api.Device, error) {
 	}
 	offer, err := d.pairer.Confirm(sessionID)
 	if err != nil {
+		d.finishAttempt(false, "the ceremony expired or was cancelled before both sides confirmed")
 		return nil, err
 	}
 	peer, err := d.store.Pin(offer.PublicKey, offer.DeviceName, offer.Address)
 	if err != nil {
+		// Pin persists before accepting, so a failure here means the keystore
+		// refused. Naming that on the timeline matters: it is the one failure
+		// mode that looks like success and then vanishes on restart.
+		d.finishAttempt(false, "the key could not be saved: "+err.Error())
 		return nil, err
 	}
+	d.finishAttempt(true, "paired with "+peer.Name)
 	d.mu.Lock()
 	d.keyMismatch = false
 	d.mu.Unlock()
@@ -538,6 +783,7 @@ func (d *Daemon) ConfirmPairing(sessionID string) (*api.Device, error) {
 
 // CancelPairing implements api.DeviceState.
 func (d *Daemon) CancelPairing(sessionID string) error {
+	d.finishAttempt(false, "cancelled on this Mac")
 	return d.pairer.Cancel(sessionID)
 }
 

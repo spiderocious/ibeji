@@ -24,6 +24,8 @@ import type {
   DoctorCheck,
   Mode,
   PairingSession,
+  PairAttempt,
+  Sweep,
   Health,
   SelfInfo,
   ShellChunk,
@@ -283,6 +285,21 @@ export class ApiClient {
    */
   reconnect(address: string): Promise<{ device: Device }> {
     return this.request("POST", "/v1/devices/reconnect", { address });
+  }
+
+  /** The last pairing attempt, step by step, with its own log. */
+  pairAttempt(): Promise<{ attempt: PairAttempt | null }> {
+    return this.request("GET", "/v1/pair/attempt");
+  }
+
+  /**
+   * Probe this Mac's subnet for daemons.
+   *
+   * The answer to "where did my other Mac go?". Takes a couple of seconds,
+   * so the caller shows a busy state.
+   */
+  sweep(): Promise<Sweep> {
+    return this.request("POST", "/v1/pair/sweep", {});
   }
 
   health(): Promise<Health> {

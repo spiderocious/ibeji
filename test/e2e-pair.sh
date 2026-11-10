@@ -252,6 +252,176 @@ else
   fail "beta still reports '$(status "$BEP" "$BTK")'; a revoked device reconnected"
 fi
 
+step "Diagnosing a failure that cannot be reached"
+
+# The thing this covers is not a crash — it is silence. A failed pairing used
+# to produce one sentence: "the paired device is not reachable". No step, no
+# error, nothing to copy. That silence let a stale IP address look like a macOS
+# permission problem for over a day, because nothing in the product ever said
+# "the address you are dialling may have changed".
+#
+# So dial an address in the documentation-only range (RFC 5737), which is
+# guaranteed not to route, and assert the daemon writes down WHERE it broke and
+# WHY — not merely that it did.
+#
+# Checked on beta, which is unpaired by this point in the run. Alpha is paired,
+# and a paired daemon refuses to pair again, which would exercise a different
+# path entirely.
+DEAD_ADDR="192.0.2.123:7749"
+
+# A paired daemon refuses to pair again, and that refusal is a real failure
+# with its own step. Whether beta still holds the pairing here depends on how
+# quickly it notices alpha's revocation, so check it only when it does rather
+# than racing that timing.
+if [[ "$(status "$BEP" "$BTK")" != "unpaired" ]]; then
+  api "$BEP" "$BTK" POST /v1/pair/start "{\"address\":\"$DEAD_ADDR\"}" >/dev/null 2>&1
+  WHILE_PAIRED="$(api "$BEP" "$BTK" GET /v1/pair/attempt | field "['attempt']['failed']")"
+  if [[ "$WHILE_PAIRED" == "ready" ]]; then
+    pass "pairing while already paired fails at its own step, not as a bad address"
+  else
+    fail "expected the ready step to catch an already-paired daemon, got '$WHILE_PAIRED'"
+  fi
+  BDEV=$(api "$BEP" "$BTK" GET /v1/devices | field "['devices'][0]['id']")
+  api "$BEP" "$BTK" POST /v1/unpair "{\"deviceId\":\"$BDEV\"}" >/dev/null 2>&1
+fi
+
+api "$BEP" "$BTK" POST /v1/pair/start "{\"address\":\"$DEAD_ADDR\"}" >/dev/null 2>&1
+
+ATTEMPT="$(api "$BEP" "$BTK" GET /v1/pair/attempt)"
+
+# Which step broke. "connect" is the answer for an unroutable address: the
+# daemon got as far as opening a socket and nothing answered.
+FAILED_STEP="$(printf '%s' "$ATTEMPT" | field "['attempt']['failed']")"
+if [[ "$FAILED_STEP" == "connect" ]]; then
+  pass "the daemon records which step failed (connect)"
+else
+  fail "expected the connect step to be flagged, got '$FAILED_STEP'"
+fi
+
+# Every step is present, including the ones never reached — a timeline that
+# only lists what happened cannot show how far there was left to go.
+STEP_COUNT="$(printf '%s' "$ATTEMPT" | field "['attempt']['steps']" | python3 -c "import sys;print(sys.stdin.read().count('key'))" 2>/dev/null || echo 0)"
+STEP_N="$(printf '%s' "$ATTEMPT" | python3 -c "import json,sys;print(len(json.load(sys.stdin)['attempt']['steps']))" 2>/dev/null || echo 0)"
+if (( STEP_N >= 7 )); then
+  pass "the whole ceremony is recorded, not just the step that broke ($STEP_N steps)"
+else
+  fail "expected at least 7 steps, got $STEP_N"
+fi
+
+# The steps after the failure must say they were never attempted. Leaving them
+# "pending" makes a timeline that looks like it is still working.
+SKIPPED="$(printf '%s' "$ATTEMPT" | python3 -c "
+import json,sys
+st=json.load(sys.stdin)['attempt']['steps']
+print(sum(1 for s in st if s['state']=='skipped'))" 2>/dev/null || echo 0)"
+if (( SKIPPED >= 1 )); then
+  pass "steps after the failure are marked never-attempted ($SKIPPED skipped)"
+else
+  fail "expected the steps after the failure to be skipped, got $SKIPPED"
+fi
+
+# The cause, in plain words. This is the part that was missing, so assert it
+# says something substantial rather than merely existing.
+CAUSE="$(printf '%s' "$ATTEMPT" | python3 -c "
+import json,sys
+st=json.load(sys.stdin)['attempt']['steps']
+print(next((s.get('cause','') for s in st if s['state']=='failed'), ''))" 2>/dev/null)"
+if (( ${#CAUSE} > 24 )); then
+  pass "the failure carries a cause in plain words"
+else
+  fail "the failing step has no usable cause: '$CAUSE'"
+fi
+
+# And a fix, and the offer to sweep — a timeout is the one failure the daemon
+# can resolve by itself, and not offering that is what cost the day.
+FIX="$(printf '%s' "$ATTEMPT" | python3 -c "
+import json,sys
+st=json.load(sys.stdin)['attempt']['steps']
+print(next((s.get('fix','') for s in st if s['state']=='failed'), ''))" 2>/dev/null)"
+SCAN="$(printf '%s' "$ATTEMPT" | python3 -c "
+import json,sys
+st=json.load(sys.stdin)['attempt']['steps']
+print(next((str(s.get('scan',False)) for s in st if s['state']=='failed'), 'False'))" 2>/dev/null)"
+if (( ${#FIX} > 16 )); then
+  pass "the failure carries a concrete next move"
+else
+  fail "the failing step has no usable fix: '$FIX'"
+fi
+if [[ "$SCAN" == "True" ]]; then
+  pass "a timeout offers the subnet sweep, since a moved peer is the likeliest cause"
+else
+  fail "a timeout should offer the sweep, got scan=$SCAN"
+fi
+
+# The attempt's own log, which is what the Copy button hands over.
+LOGLEN="$(printf '%s' "$ATTEMPT" | python3 -c "
+import json,sys
+print(len(json.load(sys.stdin)['attempt']['log']))" 2>/dev/null || echo 0)"
+if (( LOGLEN >= 3 )); then
+  pass "the attempt keeps its own log ($LOGLEN lines)"
+else
+  fail "expected a log for this attempt, got $LOGLEN lines"
+fi
+
+# A malformed address must be named as such at once, rather than surfacing
+# fifteen seconds later as a timeout.
+api "$BEP" "$BTK" POST /v1/pair/start '{"address":"not an address at all"}' >/dev/null 2>&1
+BAD="$(api "$BEP" "$BTK" GET /v1/pair/attempt | field "['attempt']['failed']")"
+if [[ "$BAD" == "address" ]]; then
+  pass "a malformed address fails at the address step, not as a timeout"
+else
+  fail "expected the address step to catch a bad address, got '$BAD'"
+fi
+
+# Pairing with this very machine.
+#
+# The sweep lists every daemon on the subnet, including this one, so a Pair
+# button pointing at ourselves is one click away. Without a guard the daemon
+# dialled itself, completed the handshake, and showed six digits to compare
+# against the same six digits on the same screen. A screenshot of the sweep
+# caught it; no assertion had.
+SELF_ADDR="$(api "$BEP" "$BTK" GET /v1/self | field "['addresses'][0]")"
+if [[ -n "$SELF_ADDR" ]]; then
+  api "$BEP" "$BTK" POST /v1/pair/start "{\"address\":\"$SELF_ADDR:$BETA_PORT\"}" >/dev/null 2>&1
+  SELF_FAIL="$(api "$BEP" "$BTK" GET /v1/pair/attempt | field "['attempt']['failed']")"
+  SELF_CAUSE="$(api "$BEP" "$BTK" GET /v1/pair/attempt | python3 -c "
+import json,sys
+st=json.load(sys.stdin)['attempt']['steps']
+print(next((s.get('cause','') for s in st if s['state']=='failed'), ''))" 2>/dev/null)"
+  if [[ "$SELF_FAIL" == "ready" ]]; then
+    pass "pairing with this Mac's own address is refused"
+  else
+    fail "a daemon paired with itself: failed step was '$SELF_FAIL'"
+  fi
+  if [[ "$SELF_CAUSE" == *"itself"* || "$SELF_CAUSE" == *"own address"* || "$SELF_CAUSE" == *"this Mac"* ]]; then
+    pass "and it says so, rather than failing cryptically"
+  else
+    fail "the self-pair refusal is not explained: '$SELF_CAUSE'"
+  fi
+fi
+
+step "Finding a peer that moved"
+
+# The sweep: the answer to "where did my other Mac go?". Alpha is listening on
+# a high test port, so sweeping beta's subnet on the default port will not
+# find it — what is asserted here is that the sweep runs, reports what it
+# covered, and says something useful about the result. Finding alpha would
+# require both daemons on 7749, which collides with the user's real one.
+SWEEP="$(api "$BEP" "$BTK" POST /v1/pair/sweep '{}')"
+SCANNED="$(printf '%s' "$SWEEP" | field "['scanned']")"
+SUBNET="$(printf '%s' "$SWEEP" | field "['subnet']")"
+HINT="$(printf '%s' "$SWEEP" | field "['hint']")"
+if [[ "$SCANNED" =~ ^[0-9]+$ ]] && (( SCANNED > 1 )); then
+  pass "the sweep probes this Mac's subnet ($SCANNED addresses on $SUBNET)"
+else
+  fail "the sweep covered nothing: scanned=$SCANNED"
+fi
+if (( ${#HINT} > 20 )); then
+  pass "the sweep says what to do with what it found"
+else
+  fail "the sweep gave no usable hint: '$HINT'"
+fi
+
 step "Result"
 if (( FAILED )); then
   echo "  logs: $SCRATCH/alpha.log $SCRATCH/beta.log"

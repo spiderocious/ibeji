@@ -490,3 +490,288 @@ html, body { height: 100%; overflow: hidden; }
    reader is told the other Mac is unreachable and left to work out the rest. */
 .banner { display: flex; align-items: center; gap: var(--s-3); }
 .banner-acts { margin-left: auto; display: flex; gap: var(--s-2); flex: none; }
+
+/* ===========================================================================
+   The pairing modal.
+
+   Clicking Pair used to close the overlay and go quiet for up to fifteen
+   seconds, then show either six digits or one sentence. This is what replaces
+   that silence: a timeline of the handshake, drawn from the daemon's own
+   record, with the failing step marked and carrying the cause, the fix and
+   the raw error.
+   ======================================================================== */
+
+.pm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-6);
+  background: rgba(26, 28, 27, .34);
+}
+
+.pm-sheet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 560px;
+  /* Bounded so the timeline scrolls inside the sheet rather than growing the
+     sheet past the window: a modal with its own buttons offscreen is worse
+     than no modal. */
+  max-height: min(84vh, 760px);
+  background: var(--paper-100);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+}
+
+.pm-head {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--paper-400);
+}
+.pm-head-acts { margin-left: auto; display: flex; gap: var(--s-2); flex: none; }
+.pm-addr {
+  font-family: var(--font-record);
+  font-size: var(--t-record);
+  color: var(--ink-800);
+}
+
+.pm-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--s-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+}
+
+.pm-foot {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  padding: var(--s-4) var(--s-5);
+  border-top: 1px solid var(--paper-400);
+  background: var(--paper-200);
+}
+
+/* The code is the point of the ceremony, so it leads. */
+.pm-code { text-align: center; }
+.pm-code-hint { max-width: 40ch; margin: var(--s-3) auto 0; }
+.pm-facts { margin-top: var(--s-4); text-align: left; }
+
+/* ---- the timeline ---- */
+
+.pm-steps {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.pm-step {
+  display: flex;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
+  position: relative;
+}
+
+/* A connecting rule, so the rows read as one sequence rather than a list of
+   unrelated statements. Drawn behind the marks and stopped before the last
+   row so it does not dangle. */
+.pm-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 18px;
+  bottom: -2px;
+  width: 1px;
+  background: var(--paper-500);
+}
+
+.pm-mark {
+  flex: none;
+  position: relative;
+  z-index: 1;
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--paper-100);
+  box-shadow: 0 0 0 1px var(--paper-600) inset, 0 0 0 3px var(--paper-100);
+}
+.pm-step.is-ok .pm-mark { background: var(--live); box-shadow: 0 0 0 3px var(--paper-100); }
+.pm-step.is-failed .pm-mark { background: var(--blood-600); box-shadow: 0 0 0 3px var(--paper-100); }
+.pm-step.is-skipped .pm-mark { background: var(--paper-400); box-shadow: 0 0 0 3px var(--paper-100); }
+
+/* The running step is the only animated thing on screen: it is the one piece
+   of information a person is waiting on. */
+.pm-step.is-running .pm-mark {
+  background: var(--sea-600);
+  box-shadow: 0 0 0 3px var(--paper-100);
+  animation: pm-pulse 1.1s ease-in-out infinite;
+}
+@keyframes pm-pulse {
+  0%, 100% { transform: scale(1);   opacity: 1; }
+  50%      { transform: scale(1.5); opacity: .55; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pm-step.is-running .pm-mark { animation: none; }
+}
+
+.pm-text { min-width: 0; flex: 1 1 auto; }
+.pm-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-size: var(--t-body-sm);
+  font-weight: 500;
+  color: var(--ink-800);
+}
+.pm-step.is-pending .pm-title,
+.pm-step.is-skipped .pm-title { color: var(--ink-300); font-weight: 400; }
+.pm-step.is-failed .pm-title { color: var(--blood-700); }
+
+.pm-took {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--font-record);
+  font-size: var(--t-record-xs);
+  color: var(--ink-400);
+}
+
+.pm-detail {
+  margin-top: 1px;
+  font-family: var(--font-record);
+  font-size: var(--t-record-sm);
+  color: var(--ink-500);
+  word-break: break-word;
+}
+/* A step that did not succeed but did not stop the ceremony — the name
+   exchange. Marked, not alarming. */
+.pm-warn {
+  margin-top: 2px;
+  font-size: var(--t-record-sm);
+  color: var(--ochre-700);
+}
+
+/* ---- the failure panel ---- */
+
+.pm-fail {
+  padding: var(--s-4);
+  border-radius: var(--r-md);
+  background: var(--blood-50);
+  box-shadow: 0 0 0 1px var(--blood-200) inset;
+}
+.pm-fail-head {
+  font-size: var(--t-body-sm);
+  font-weight: 600;
+  color: var(--blood-700);
+}
+/* Cause before fix before error: the raw error is the least useful of the
+   three to somebody who is stuck, and leading with it is what made the old
+   messages feel like a wall. */
+.pm-cause { margin: var(--s-2) 0 0; font-size: var(--t-body); color: var(--ink-800); }
+.pm-fix   { margin: var(--s-3) 0 0; font-size: var(--t-body); color: var(--ink-800); }
+.pm-err {
+  margin: var(--s-3) 0 0;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--paper-300);
+  font-family: var(--font-record);
+  font-size: var(--t-record-xs);
+  color: var(--ink-700);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ---- the subnet sweep ---- */
+
+.pm-sweep {
+  padding: var(--s-4);
+  border-radius: var(--r-md);
+  background: var(--sea-50);
+  box-shadow: 0 0 0 1px var(--sea-100) inset;
+}
+.pm-sweep-head {
+  font-size: var(--t-body-sm);
+  font-weight: 600;
+  color: var(--sea-800);
+  margin-bottom: var(--s-2);
+}
+.pm-sweep .dev-row { background: var(--paper-100); border-radius: var(--r-sm); margin-top: var(--s-2); }
+.pm-sweep-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+  color: var(--ink-500);
+}
+.pm-sweep-foot .btn { margin-left: auto; flex: none; }
+
+.pm-log {
+  margin: 0;
+  padding: var(--s-3);
+  max-height: 240px;
+  overflow: auto;
+  border-radius: var(--r-md);
+  font-family: var(--font-record);
+  font-size: var(--t-record-xs);
+  line-height: 1.6;
+  color: #D7DEDC;
+  background: var(--ink-900);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ===========================================================================
+   "Why?"
+
+   This button used to navigate to the Health tab, which is a filing cabinet,
+   not an answer. These are the four causes that look identical from this side,
+   in the order they are likely, each with the check that settles it.
+   ======================================================================== */
+
+.why {
+  margin: 0 var(--s-5) var(--s-4);
+  padding: var(--s-4);
+  border-radius: var(--r-md);
+  background: var(--paper-100);
+  box-shadow: 0 0 0 1px var(--paper-500) inset;
+}
+.why-head {
+  font-size: var(--t-body-sm);
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.why-intro { margin: var(--s-2) 0 var(--s-4); color: var(--ink-600); }
+.why-reported { margin-top: var(--s-3); }
+
+.why-item {
+  display: flex;
+  gap: var(--s-3);
+  padding: var(--s-3) 0;
+  border-top: 1px solid var(--paper-400);
+}
+.why-n {
+  flex: none;
+  width: 20px; height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--paper-300);
+  font-family: var(--font-record);
+  font-size: var(--t-record-xs);
+  color: var(--ink-600);
+}
+.why-text { min-width: 0; }
+.why-title { font-size: var(--t-body-sm); font-weight: 500; color: var(--ink-900); }
+.why-text p { margin: var(--s-1) 0 0; color: var(--ink-700); }
+.why-act { margin-top: var(--s-2); }
+.why-foot { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--paper-400); }

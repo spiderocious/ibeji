@@ -10,14 +10,14 @@
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.renderer.json && node scripts/copy-assets.mjs",
     "dev": "npm run build && electron .",
     "start": "electron .",
-    "smoke": "npm run build && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron test/smoke.js",
+    "smoke": "npm run build && node test/pairing-guard.js snapshot && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron test/smoke.js; rc=$?; node test/pairing-guard.js verify && exit $rc || exit 1",
     "dist": "npm run dist:arm64 && npm run dist:x64",
     "dist:arm64": "node scripts/build-binaries.mjs arm64 && npm run build && electron-builder --mac --arm64 --publish never && node scripts/verify-dmg.mjs arm64",
     "dist:x64": "node scripts/build-binaries.mjs amd64 && npm run build && electron-builder --mac --x64 --publish never && node scripts/verify-dmg.mjs x64",
-    "modal-check": "npm run build && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron test/modal-check.js",
-    "pair-check": "npm run build && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron test/pair-modal-check.js",
-    "scroll-check": "npm run build && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron test/scroll-check.js",
-    "why-check": "npm run build && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron test/why-check.js"
+    "modal-check": "npm run build && node test/pairing-guard.js snapshot && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron test/modal-check.js; rc=$?; node test/pairing-guard.js verify && exit $rc || exit 1",
+    "pair-check": "npm run build && node test/pairing-guard.js snapshot && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron test/pair-modal-check.js; rc=$?; node test/pairing-guard.js verify && exit $rc || exit 1",
+    "scroll-check": "npm run build && node test/pairing-guard.js snapshot && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron test/scroll-check.js; rc=$?; node test/pairing-guard.js verify && exit $rc || exit 1",
+    "why-check": "npm run build && node test/pairing-guard.js snapshot && ELECTRON_RUN_AS_NODE= ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron test/why-check.js; rc=$?; node test/pairing-guard.js verify && exit $rc || exit 1"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

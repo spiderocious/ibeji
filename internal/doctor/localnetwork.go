@@ -90,3 +90,25 @@ func defaultGateway() (string, error) {
 	}
 	return "", fmt.Errorf("doctor: no gateway in the default route")
 }
+
+// lanBlocked reports whether this process is cut off from the LAN while the
+// internet still works — the signature of a macOS Local Network denial.
+//
+// Shared with the Link check so the two cannot contradict each other. It
+// returns the gateway too, because naming the address that did not answer is
+// what makes the verdict checkable rather than an assertion.
+func lanBlocked(ctx context.Context) (bool, string) {
+	gw, err := defaultGateway()
+	if err != nil || gw == "" {
+		return false, ""
+	}
+	lanOK := canReach(ctx, net.JoinHostPort(gw, "80"), 2*time.Second) ||
+		canReach(ctx, net.JoinHostPort(gw, "443"), 2*time.Second) ||
+		canReach(ctx, net.JoinHostPort(gw, "53"), 2*time.Second)
+	if lanOK {
+		return false, gw
+	}
+	netOK := canReach(ctx, "1.1.1.1:443", 3*time.Second) ||
+		canReach(ctx, "8.8.8.8:53", 3*time.Second)
+	return netOK, gw
+}

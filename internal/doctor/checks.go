@@ -211,12 +211,36 @@ func Link(state LinkState) CheckFunc {
 				"the peer's key does not match the pinned key")
 		}
 		if !state.LinkUp() {
+			// Before blaming the other machine, ask whether this one can
+			// reach the LAN at all.
+			//
+			// Doctor used to report "macOS is blocking Ìbejì from this
+			// network" and, three lines below, "usually this just means the
+			// other machine is asleep — check it is awake and on the same
+			// Wi-Fi". Two contradictory causes in one report, and the second
+			// one sends you to the wrong machine. That is the advice that cost
+			// a day: the permission had lapsed after an update, and every
+			// minute spent checking the peer was a minute spent on a machine
+			// that was fine.
+			//
+			// The Local Network check already knows how to tell these apart —
+			// internet up and gateway down is a permission denial and nothing
+			// else — so reuse it rather than guessing.
+			if blocked, gw := lanBlocked(ctx); blocked {
+				return Warned(name,
+					fmt.Sprintf("%s is not reachable right now", state.PeerName()),
+					fmt.Sprintf("This is the Local Network denial above, not the other machine: "+
+						"nothing on this network answers, including the router at %s, while the "+
+						"internet works. Fix that permission first — the other Mac is probably "+
+						"fine, and checking it will tell you nothing.", gw))
+			}
 			// Offline is normal on a LAN, so this is a warning with the
 			// ordinary explanation first.
 			return Warned(name,
 				fmt.Sprintf("%s is not reachable right now", state.PeerName()),
 				"Usually this just means the other machine is asleep or on a different network. "+
-					"Check it is awake and on the same Wi-Fi.")
+					"Check it is awake and on the same Wi-Fi. If it is awake, its address may have "+
+					"changed — `ibeji sweep` finds it by name.")
 		}
 		return Passed(name, fmt.Sprintf("up · %s at %s", state.PeerName(), state.PeerAddress()))
 	}

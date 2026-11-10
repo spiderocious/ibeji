@@ -51,10 +51,17 @@ func spaceCreate(ctx context.Context, env *Env, args []string) error {
 	role := fs.String("role", "master", "master or replica")
 	mode := fs.String("mode", "two-way", "two-way, or mirror for master-to-replica only")
 	ignore := fs.String("ignore", "", "extra ignore patterns, comma separated")
-	if err := fs.Parse(args); err != nil {
+	// splitFlags, not fs.Parse: Go's flag package stops at the first
+	// positional, so `spaces create NAME DIR --role replica` silently
+	// discarded the role and fell back to the master default. The command then
+	// printed "created NAME · master" and told you to run `--role replica` on
+	// the other machine — in the very position that does not work. Following
+	// the instructions gave you two masters and a split brain, with nothing
+	// said. This is the one flag where a silent default is unsafe.
+	rest, err := splitFlags(fs, args, 2)
+	if err != nil {
 		return err
 	}
-	rest := fs.Args()
 	if len(rest) < 2 {
 		return fmt.Errorf("usage: ibeji spaces create <name> <folder> [--role master|replica] [--mode two-way|mirror]")
 	}

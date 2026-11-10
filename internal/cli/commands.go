@@ -903,6 +903,19 @@ var cmdPad = &Command{
 			}
 			return nil
 		}
+		// The pad takes its text as plain words, with no flags. That makes a
+		// mistyped flag indistinguishable from note text: `ibeji pad --set
+		// "hi"` used to store the literal string "--set hi" and report
+		// success, so the note was quietly wrong and nothing said so. Refuse
+		// it and name the right form instead.
+		for _, a := range args {
+			if strings.HasPrefix(a, "-") && a != "-" {
+				return fmt.Errorf("ibeji pad takes the note as plain text, with no flags\n"+
+					"       to write:  ibeji pad %q\n"+
+					"       to read:   ibeji pad\n"+
+					"       (got %q)", strings.Join(args[1:], " "), a)
+			}
+		}
 		return env.Client.PostJSON(ctx, "/v1/scratchpad",
 			map[string]string{"text": strings.Join(args, " ") + "\n"}, nil)
 	},
